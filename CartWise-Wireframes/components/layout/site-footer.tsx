@@ -1,7 +1,8 @@
 import { Logo } from "@/components/brand/logo";
 import { TransparencyNote } from "@/components/common/transparency-note";
-import { COVERED_STORES } from "@/lib/constants";
 
+// Footer global persistente. NO lista supermercados cubiertos aquí (plan §3): la
+// cobertura se muestra solo en secciones específicas (landing, catálogo).
 export function SiteFooter() {
   return (
     <footer className="border-t border-border bg-card">
@@ -13,11 +14,7 @@ export function SiteFooter() {
             demostrativos.
           </p>
         </div>
-        <div className="space-y-2 md:text-right">
-          <p className="text-xs font-bold uppercase tracking-widest text-primary">Supermercados cubiertos</p>
-          <p className="text-sm font-semibold text-foreground">{COVERED_STORES.join(" · ")}</p>
-          <TransparencyNote className="md:justify-end" />
-        </div>
+        <TransparencyNote className="md:max-w-xs md:text-right" />
       </div>
     </footer>
   );

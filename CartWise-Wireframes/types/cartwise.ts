@@ -57,6 +57,37 @@ export type BasketItem = SearchItem & {
   quantity: number;
 };
 
+export type CategoryDeals = {
+  categoria: string;
+  items: SearchItem[];
+};
+
+// Oferta por tienda para un producto exacto (operación productOffers del bridge).
+export type StoreOffer = {
+  store_id: number;
+  store_key: string;
+  store_label: string;
+  sitio_web?: string | null;
+  url?: string | null;
+  precio?: number | null;
+  precio_lista?: number | null;
+  disponible?: boolean | number | null;
+  stock?: number | null;
+  capturado_en?: string | null;
+};
+
+export type ProductOffers = {
+  product: {
+    id: number;
+    ean?: string | null;
+    nombre: string;
+    marca?: string | null;
+    categoria?: string | null;
+    generico_id?: number | null;
+  } | null;
+  offers: StoreOffer[];
+};
+
 export type CompareLine = {
   itemId: number;
   kind: MatchKind;
@@ -144,6 +175,11 @@ export type PantryItem = {
   addedAt: string;
   updatedAt: string;
   notes?: string;
+  // Snapshot del mejor precio al momento de agregar (plan §6.4). Puede faltar en
+  // items manuales antiguos o de compras confirmadas.
+  ean?: string | null;
+  bestPrice?: number | null;
+  bestPriceStore?: string | null;
 };
 
 export type PantryItemDraft = {

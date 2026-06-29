@@ -6,6 +6,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { LandingCta } from "@/components/landing/landing-cta";
 import { DealsCarousel } from "@/components/landing/deals-carousel";
 import { StoreCoverage } from "@/components/store/store-coverage";
+import { StoreLogo } from "@/components/brand/store-logo";
 import { SectionHeading } from "@/components/common/section-heading";
 import { TransparencyNote } from "@/components/common/transparency-note";
 import { Badge } from "@/components/ui/badge";
@@ -63,36 +64,38 @@ export default function LandingPage() {
               <TransparencyNote />
             </div>
 
-            {/* Tarjeta hero ilustrativa */}
+            {/* Tarjeta hero ilustrativa: cobertura real, sin precios inventados */}
             <div className="relative">
-              <div className="rounded-2xl border border-border bg-card p-5 shadow-xl">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-foreground">Tu compra, comparada</span>
-                  <Badge variant="savings">Ahorro estimado</Badge>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {[
-                    { store: "Santa Isabel", total: "$24.380", best: true },
-                    { store: "Jumbo", total: "$26.910", best: false },
-                    { store: "Unimarc", total: "$25.640", best: false },
-                  ].map((row) => (
+              <div className="rounded-2xl border border-border bg-card p-6 shadow-xl">
+                <p className="text-xs font-bold uppercase tracking-widest text-primary">
+                  Comparamos por ti
+                </p>
+                <p className="mt-1 text-lg font-extrabold text-foreground">
+                  Un mismo producto, varios supermercados
+                </p>
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  {COVERED_STORES.map((store) => (
                     <div
-                      key={row.store}
-                      className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
-                        row.best ? "border-primary bg-primary/5" : "border-border"
-                      }`}
+                      key={store}
+                      className="flex items-center gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5"
                     >
-                      <span className="text-sm font-semibold text-foreground">{row.store}</span>
-                      <span className="flex items-center gap-2">
-                        {row.best && <Badge variant="savings">Recomendado</Badge>}
-                        <span className="cw-price font-extrabold text-foreground">{row.total}</span>
-                      </span>
+                      <StoreLogo name={store} size={34} />
+                      <span className="text-sm font-bold text-foreground">{store}</span>
                     </div>
                   ))}
                 </div>
-                <p className="mt-4 text-xs text-muted-foreground">
-                  Ejemplo ilustrativo. La recomendación prioriza cobertura y luego precio.
-                </p>
+                <div className="mt-5 space-y-2.5 text-sm">
+                  {[
+                    "Vemos qué tienda cubre más de tu compra",
+                    "Detectamos diferencias de precio entre supermercados",
+                    "Te recomendamos dónde conviene comprar",
+                  ].map((line) => (
+                    <p key={line} className="flex items-start gap-2 text-muted-foreground">
+                      <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+                      <span>{line}</span>
+                    </p>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

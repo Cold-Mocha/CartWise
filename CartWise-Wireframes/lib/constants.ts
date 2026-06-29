@@ -9,7 +9,13 @@ export const STORAGE_KEYS = {
   confirmed: "cartwise_web_confirmed",
   lists: "cartwise_web_lists",
   pantry: "cartwise_web_pantry",
+  budget: "cartwise_web_budget",
+  onboarding: "cartwise_web_onboarding_done",
 } as const;
+
+// Presupuesto mensual demo del MVP (CLP). Editable en estado local; sirve de
+// referencia para "gasto del mes vs presupuesto" en la dashboard.
+export const DEFAULT_MONTHLY_BUDGET = 250_000;
 
 export const SUGERENCIAS = ["leche", "arroz", "aceite", "fideos", "cerveza", "café", "atún"];
 

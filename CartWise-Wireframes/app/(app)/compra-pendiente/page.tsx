@@ -182,7 +182,9 @@ function BasketRow({
             <div className="min-w-0">
               <h3 className="truncate text-sm font-bold text-foreground">{item.nombre}</h3>
               <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                <Badge variant={item.kind === "product" ? "default" : "muted"}>{item.match_label}</Badge>
+                <Badge variant={item.kind === "product" ? "default" : "muted"}>
+                  {item.kind === "product" ? "Producto" : "Comparable por unidad"}
+                </Badge>
                 {item.marca && <span className="text-xs text-muted-foreground">{item.marca}</span>}
               </div>
             </div>

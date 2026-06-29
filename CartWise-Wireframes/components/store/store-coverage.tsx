@@ -1,19 +1,9 @@
 import { Check, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StoreLogo } from "@/components/brand/store-logo";
 import { COMING_SOON_STORES, COVERED_STORES } from "@/lib/constants";
 
-// Iniciales/colores de marca por tienda para los chips (sin usar logos protegidos).
-const STORE_STYLE: Record<string, { initials: string; className: string }> = {
-  Jumbo: { initials: "J", className: "bg-green-600 text-white" },
-  "Santa Isabel": { initials: "SI", className: "bg-red-600 text-white" },
-  Unimarc: { initials: "U", className: "bg-amber-500 text-white" },
-  "El Trébol": { initials: "ET", className: "bg-emerald-700 text-white" },
-  Tottus: { initials: "T", className: "bg-muted text-muted-foreground" },
-  "Líder": { initials: "L", className: "bg-muted text-muted-foreground" },
-};
-
 function StoreChip({ name, soon }: { name: string; soon?: boolean }) {
-  const style = STORE_STYLE[name] ?? { initials: name.slice(0, 2), className: "bg-muted text-muted-foreground" };
   return (
     <div
       className={cn(
@@ -21,9 +11,7 @@ function StoreChip({ name, soon }: { name: string; soon?: boolean }) {
         soon ? "border-dashed border-border opacity-80" : "border-border",
       )}
     >
-      <span className={cn("flex size-8 items-center justify-center rounded-full text-xs font-extrabold", style.className)}>
-        {style.initials}
-      </span>
+      <StoreLogo name={name} size={32} className="rounded-full" />
       <span className="text-sm font-bold text-foreground">{name}</span>
       {soon ? (
         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">

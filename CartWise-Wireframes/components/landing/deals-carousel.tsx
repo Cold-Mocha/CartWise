@@ -5,6 +5,7 @@ import { Carousel, CarouselSlide } from "@/components/ui/carousel";
 import { DealCard } from "@/components/product/deal-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getTopDeals } from "@/lib/api";
+import { isStrongDifference } from "@/lib/basket";
 import type { SearchItem } from "@/types/cartwise";
 
 /*
@@ -27,8 +28,10 @@ export function DealsCarousel({
 
   useEffect(() => {
     let active = true;
-    getTopDeals(limit)
-      .then((items) => active && setDeals(items))
+    // Pedimos de más y filtramos solo "diferencias destacadas" reales (>=20%,
+    // plan §4.4): así toda card del carrusel cumple el umbral.
+    getTopDeals(Math.min(30, limit * 2))
+      .then((items) => active && setDeals(items.filter(isStrongDifference).slice(0, limit)))
       .catch(() => active && setError(true));
     return () => {
       active = false;

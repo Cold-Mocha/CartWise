@@ -121,10 +121,31 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
   }
+
+  /* Feedback de compra pendiente: pulso verde suave del borde (plan §7). */
+  .cw-pulse {
+    animation: cw-pulse 1.8s ease-out 2;
+  }
+  @keyframes cw-pulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
+    70% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--primary) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 0%, transparent); }
+  }
+
+  /* Aparición breve al agregar productos (microinteracción discreta). */
+  .cw-pop {
+    animation: cw-pop 0.28s ease-out;
+  }
+  @keyframes cw-pop {
+    0% { transform: scale(0.96); opacity: 0.4; }
+    100% { transform: scale(1); opacity: 1; }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cw-marquee {
+  .cw-marquee,
+  .cw-pulse,
+  .cw-pop {
     animation: none;
   }
 }

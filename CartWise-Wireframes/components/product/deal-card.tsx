@@ -62,7 +62,7 @@ export function DealCard({
 
       {onClick && (
         <span className="inline-flex items-center gap-1 text-xs font-bold text-primary opacity-0 transition-opacity group-hover:opacity-100">
-          Agregar a mi compra <ArrowRight className="size-3" />
+          Ver precios y agregar <ArrowRight className="size-3" />
         </span>
       )}
     </button>

@@ -1,34 +1,72 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, SlidersHorizontal, PackageSearch, TrendingDown, X } from "lucide-react";
+import { Search, SlidersHorizontal, PackageSearch, X } from "lucide-react";
 import { useAppState } from "@/components/state/app-state";
 import { ProductCard } from "@/components/product/product-card";
+import { ProductDetailDialog } from "@/components/product/product-detail-dialog";
+import { BrowseCarousels } from "@/components/product/browse-carousels";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
 import { TransparencyNote } from "@/components/common/transparency-note";
+import { StoreCoverage } from "@/components/store/store-coverage";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { searchExactProducts, searchGenericProducts } from "@/lib/api";
 import { isStrongDifference } from "@/lib/basket";
-import { SUGERENCIAS, CATEGORIAS_DESTACADAS, COVERED_STORES } from "@/lib/constants";
+import { normalizeText } from "@/lib/text";
+import { money } from "@/lib/format";
+import { SUGERENCIAS, COVERED_STORES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import type { MatchFilter, SearchItem } from "@/types/cartwise";
+import type { SearchItem } from "@/types/cartwise";
+
+const ALL = "__all__";
 
 export default function ProductosPage() {
-  const { addToBasket } = useAppState();
+  const { addToBasket, addProductsToPantry, confirmed, pantry } = useAppState();
   const [query, setQuery] = useState("");
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<SearchItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<SearchItem | null>(null);
 
-  const [matchFilter, setMatchFilter] = useState<MatchFilter>("all");
+  // Filtros estilo supermercado.
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [brand, setBrand] = useState<string>(ALL);
+  const [category, setCategory] = useState<string>(ALL);
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
   const [onlyStrong, setOnlyStrong] = useState(false);
+  const [onlyMultiStore, setOnlyMultiStore] = useState(false);
+  const [seals, setSeals] = useState<Set<string>>(new Set());
 
   const reqId = useRef(0);
+
+  // Nombres comprados / en despensa para sellos derivados.
+  const purchasedNames = useMemo(
+    () => new Set(confirmed.flatMap((c) => c.items.map((i) => normalizeText(i.productName)))),
+    [confirmed],
+  );
+  const pantryNames = useMemo(
+    () => new Set(pantry.map((p) => normalizeText(p.productName))),
+    [pantry],
+  );
+  const purchasedCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          confirmed.flatMap((c) => c.items.map((i) => i.category).filter(Boolean) as string[]),
+        ),
+      ),
+    [confirmed],
+  );
 
   // Debounce de la búsqueda.
   useEffect(() => {
@@ -46,7 +84,7 @@ export default function ProductosPage() {
     const id = ++reqId.current;
     setLoading(true);
     setError(null);
-    Promise.all([searchExactProducts(term, 16), searchGenericProducts(term, 10)])
+    Promise.all([searchExactProducts(term, 24), searchGenericProducts(term, 12)])
       .then(([exact, generic]) => {
         if (id !== reqId.current) return;
         setResults([...exact, ...generic]);
@@ -60,33 +98,84 @@ export default function ProductosPage() {
       });
   }, [term]);
 
+  const tagsFor = (item: SearchItem) => {
+    const t: string[] = [];
+    if (purchasedNames.has(normalizeText(item.nombre))) t.push("Comprado antes");
+    if (pantryNames.has(normalizeText(item.nombre))) t.push("En despensa");
+    return t;
+  };
+
+  // Opciones de marca y categoría presentes en los resultados.
+  const brandOptions = useMemo(
+    () => Array.from(new Set(results.map((r) => r.marca).filter(Boolean) as string[])).sort(),
+    [results],
+  );
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(results.map((r) => r.categoria).filter(Boolean) as string[])).sort(),
+    [results],
+  );
+  const priceCeiling = useMemo(
+    () => Math.max(0, ...results.map((r) => r.precio_min ?? 0)),
+    [results],
+  );
+
   const filtered = useMemo(() => {
     return results.filter((item) => {
-      if (matchFilter !== "all" && item.kind !== matchFilter) return false;
+      if (maxPrice != null && item.precio_min != null && item.precio_min > maxPrice) return false;
+      if (brand !== ALL && item.marca !== brand) return false;
+      if (category !== ALL && item.categoria !== category) return false;
       if (storeFilter && item.precio_min_store_label !== storeFilter) return false;
       if (onlyStrong && !isStrongDifference(item)) return false;
+      if (onlyMultiStore && (item.n_tiendas ?? 0) < 2) return false;
+      if (seals.has("Comprado antes") && !purchasedNames.has(normalizeText(item.nombre))) return false;
+      if (seals.has("En despensa") && !pantryNames.has(normalizeText(item.nombre))) return false;
       return true;
     });
-  }, [results, matchFilter, storeFilter, onlyStrong]);
+  }, [results, maxPrice, brand, category, storeFilter, onlyStrong, onlyMultiStore, seals, purchasedNames, pantryNames]);
 
   const hasSearch = term.length >= 2;
-  const anyFilter = matchFilter !== "all" || storeFilter !== null || onlyStrong;
+  const anyFilter =
+    maxPrice != null ||
+    brand !== ALL ||
+    category !== ALL ||
+    storeFilter !== null ||
+    onlyStrong ||
+    onlyMultiStore ||
+    seals.size > 0;
+
+  const clearFilters = () => {
+    setMaxPrice(null);
+    setBrand(ALL);
+    setCategory(ALL);
+    setStoreFilter(null);
+    setOnlyStrong(false);
+    setOnlyMultiStore(false);
+    setSeals(new Set());
+  };
+
+  const toggleSeal = (seal: string) =>
+    setSeals((prev) => {
+      const next = new Set(prev);
+      if (next.has(seal)) next.delete(seal);
+      else next.add(seal);
+      return next;
+    });
 
   return (
     <div className="space-y-6">
       <SectionHeading
         eyebrow="Catálogo"
-        title="Busca productos"
-        description="Encuentra productos por nombre o marca en los supermercados cubiertos y agrégalos a tu compra."
+        title="Productos"
+        description="Busca como en un supermercado online y compara precios entre las tiendas cubiertas."
       />
 
-      {/* Buscador */}
+      {/* Buscador grande */}
       <div className="relative">
         <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar leche, arroz, aceite, cerveza…"
+          placeholder="Buscar por nombre o marca: leche, arroz, aceite, cerveza…"
           className="h-14 rounded-xl pl-12 pr-12 text-base shadow-sm"
           aria-label="Buscar productos"
           autoFocus
@@ -103,9 +192,9 @@ export default function ProductosPage() {
         )}
       </div>
 
-      {/* Sugerencias / categorías rápidas */}
+      {/* Sugerencias rápidas */}
       <div className="flex flex-wrap gap-2">
-        {(hasSearch ? CATEGORIAS_DESTACADAS : SUGERENCIAS).map((s) => (
+        {SUGERENCIAS.map((s) => (
           <button
             key={s}
             type="button"
@@ -117,89 +206,185 @@ export default function ProductosPage() {
         ))}
       </div>
 
-      {/* Filtros */}
-      {hasSearch && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-            <SlidersHorizontal className="size-3.5" /> Filtros
-          </span>
-          <FilterChip active={matchFilter === "all"} onClick={() => setMatchFilter("all")}>
-            Todos
-          </FilterChip>
-          <FilterChip active={matchFilter === "product"} onClick={() => setMatchFilter("product")}>
-            Exacto por EAN
-          </FilterChip>
-          <FilterChip active={matchFilter === "generic"} onClick={() => setMatchFilter("generic")}>
-            Comparable
-          </FilterChip>
-          <span className="mx-1 h-5 w-px bg-border" />
-          {COVERED_STORES.map((store) => (
-            <FilterChip
-              key={store}
-              active={storeFilter === store}
-              onClick={() => setStoreFilter(storeFilter === store ? null : store)}
-            >
-              {store}
-            </FilterChip>
-          ))}
-          <span className="mx-1 h-5 w-px bg-border" />
-          <FilterChip active={onlyStrong} onClick={() => setOnlyStrong((v) => !v)}>
-            <TrendingDown className="size-3.5" /> Diferencia destacada
-          </FilterChip>
-          {anyFilter && (
-            <button
-              type="button"
-              onClick={() => {
-                setMatchFilter("all");
-                setStoreFilter(null);
-                setOnlyStrong(false);
-              }}
-              className="ml-auto text-xs font-semibold text-primary hover:underline"
-            >
-              Limpiar filtros
-            </button>
-          )}
+      {!hasSearch ? (
+        <div className="space-y-8">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-primary">
+              Supermercados cubiertos
+            </p>
+            <StoreCoverage />
+          </div>
+          <BrowseCarousels
+            purchasedCategories={purchasedCategories}
+            onOpenDetail={setDetail}
+          />
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+          {/* Panel de filtros */}
+          <aside className="space-y-5 lg:sticky lg:top-20 lg:self-start">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 text-sm font-bold text-foreground">
+                  <SlidersHorizontal className="size-4" /> Filtros
+                </span>
+                {anyFilter && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="text-xs font-semibold text-primary hover:underline"
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-5">
+                {/* Precio */}
+                <div className="space-y-2">
+                  <label htmlFor="price" className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Precio máximo
+                  </label>
+                  <input
+                    id="price"
+                    type="range"
+                    min={0}
+                    max={Math.max(1000, priceCeiling)}
+                    step={500}
+                    value={maxPrice ?? Math.max(1000, priceCeiling)}
+                    onChange={(e) => setMaxPrice(Number(e.target.value))}
+                    className="w-full accent-[var(--primary)]"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Hasta{" "}
+                    <span className="font-semibold text-foreground">
+                      {money(maxPrice ?? Math.max(1000, priceCeiling))}
+                    </span>
+                  </p>
+                </div>
+
+                {/* Marca */}
+                <div className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Marca</span>
+                  <Select value={brand} onValueChange={setBrand}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Todas las marcas</SelectItem>
+                      {brandOptions.map((b) => (
+                        <SelectItem key={b} value={b}>
+                          {b}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Categoría */}
+                <div className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Categoría</span>
+                  <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Todas las categorías</SelectItem>
+                      {categoryOptions.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Supermercado (más barato en) */}
+                <div className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Más barato en
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {COVERED_STORES.map((store) => (
+                      <FilterChip
+                        key={store}
+                        active={storeFilter === store}
+                        onClick={() => setStoreFilter(storeFilter === store ? null : store)}
+                      >
+                        {store}
+                      </FilterChip>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Sellos / etiquetas */}
+                <div className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Etiquetas</span>
+                  <div className="flex flex-col gap-1.5">
+                    <FilterChip active={onlyStrong} onClick={() => setOnlyStrong((v) => !v)}>
+                      Solo diferencias destacadas
+                    </FilterChip>
+                    <FilterChip active={onlyMultiStore} onClick={() => setOnlyMultiStore((v) => !v)}>
+                      Disponible en varias tiendas
+                    </FilterChip>
+                    <FilterChip active={seals.has("Comprado antes")} onClick={() => toggleSeal("Comprado antes")}>
+                      Comprado antes
+                    </FilterChip>
+                    <FilterChip active={seals.has("En despensa")} onClick={() => toggleSeal("En despensa")}>
+                      En despensa
+                    </FilterChip>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* Resultados */}
+          <div className="space-y-4">
+            {loading ? (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <Skeleton key={i} className="h-72 w-full rounded-lg" />
+                ))}
+              </div>
+            ) : error ? (
+              <EmptyState icon={PackageSearch} title="No se pudo buscar" description={error} />
+            ) : filtered.length === 0 ? (
+              <EmptyState
+                icon={PackageSearch}
+                title="Sin resultados"
+                description="Prueba con otro nombre o ajusta los filtros."
+              />
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  {filtered.length} resultados para{" "}
+                  <span className="font-semibold text-foreground">“{term}”</span>
+                </p>
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                  {filtered.map((item) => (
+                    <ProductCard
+                      key={`${item.kind}-${item.id}`}
+                      item={item}
+                      onAdd={addToBasket}
+                      onOpenDetail={setDetail}
+                      tags={tagsFor(item)}
+                    />
+                  ))}
+                </div>
+                <TransparencyNote />
+              </>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Resultados */}
-      {!hasSearch ? (
-        <EmptyState
-          icon={PackageSearch}
-          title="Empieza a buscar"
-          description="Escribe el nombre de un producto o elige una sugerencia para ver precios entre supermercados."
-        />
-      ) : loading ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-72 w-full rounded-lg" />
-          ))}
-        </div>
-      ) : error ? (
-        <EmptyState
-          icon={PackageSearch}
-          title="No se pudo buscar"
-          description={error}
-        />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={PackageSearch}
-          title="Sin resultados"
-          description="Prueba con otro nombre o revisa los filtros."
-        />
-      ) : (
-        <>
-          <p className="text-sm text-muted-foreground">
-            {filtered.length} resultados para <span className="font-semibold text-foreground">“{term}”</span>
-          </p>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {filtered.map((item) => (
-              <ProductCard key={`${item.kind}-${item.id}`} item={item} onAdd={addToBasket} />
-            ))}
-          </div>
-          <TransparencyNote />
-        </>
-      )}
+      <ProductDetailDialog
+        item={detail}
+        onClose={() => setDetail(null)}
+        onAddBasket={addToBasket}
+        onAddPantry={(item) => addProductsToPantry([item])}
+      />
     </div>
   );
 }

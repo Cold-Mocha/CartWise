@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   Wallet,
   PiggyBank,
-  BadgeCheck,
   ShoppingBasket,
   Bookmark,
   History,
@@ -14,25 +13,32 @@ import {
 } from "lucide-react";
 import { useAppState } from "@/components/state/app-state";
 import { MetricCard } from "@/components/dashboard/metric-card";
+import { BudgetProgress } from "@/components/dashboard/budget-progress";
 import { CategorySpendChart, MonthlyAccumChart } from "@/components/dashboard/spend-charts";
 import { DealsCarousel } from "@/components/landing/deals-carousel";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
-import { StoreCoverage } from "@/components/store/store-coverage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { money, monthKey, currentMonthLabel, plural, shortDate } from "@/lib/format";
-import { SNAPSHOT_FECHA } from "@/lib/constants";
 
 export default function DashboardPage() {
-  const { basket, basketUnits, history, confirmed, savedLists, pantry, compareItems, addToBasket } =
-    useAppState();
+  const {
+    hydrated,
+    basket,
+    basketUnits,
+    history,
+    confirmed,
+    savedLists,
+    pantry,
+    compareItems,
+    addToBasket,
+    monthlyBudget,
+  } = useAppState();
 
   const month = monthKey();
   const monthConfirmed = confirmed.filter((c) => monthKey(c.purchaseDate) === month);
   const gastoMes = monthConfirmed.reduce((s, c) => s + (c.realTotal || 0), 0);
-  const ahorroConfirmado = monthConfirmed.reduce((s, c) => s + (c.confirmedSavings || 0), 0);
   const monthPlans = history.filter((p) => monthKey(p.createdAt) === month);
   const ahorroEstimado = monthPlans.reduce((s, p) => s + (p.savings || 0), 0);
   const recientes = [...confirmed].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 4);
@@ -40,72 +46,83 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-10">
-      {/* Encabezado + estado de datos */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm font-bold uppercase tracking-widest text-primary">Tu mes en comida</p>
-          <h1 className="text-3xl font-extrabold capitalize tracking-tight text-foreground sm:text-4xl">
-            {currentMonthLabel()}
-          </h1>
-        </div>
-        <div className="rounded-lg border border-border bg-card px-4 py-2 text-right text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Snapshot {SNAPSHOT_FECHA}</span>
-          <span className="mx-2 opacity-40">·</span>
-          4 supermercados cubiertos
-        </div>
+      {/* Encabezado centrado en el usuario (sin estado del sistema) */}
+      <div>
+        <p className="text-sm font-bold uppercase tracking-widest text-primary">Tu mes en comida</p>
+        <h1 className="text-3xl font-extrabold capitalize tracking-tight text-foreground sm:text-4xl">
+          {currentMonthLabel()}
+        </h1>
       </div>
 
       {/* Métricas del mes */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         <MetricCard
           icon={Wallet}
           label="Gasto registrado del mes"
-          value={money(gastoMes)}
-          hint="Solo comida y bebida"
+          value={hydrated ? money(gastoMes) : "—"}
+          hint="Según tus compras confirmadas"
         />
         <MetricCard
           icon={PiggyBank}
           label="Ahorro estimado"
-          value={money(ahorroEstimado)}
+          value={hydrated ? money(ahorroEstimado) : "—"}
           hint="Según planes comparados"
-          tone="savings"
-        />
-        <MetricCard
-          icon={BadgeCheck}
-          label="Ahorro confirmado"
-          value={money(ahorroConfirmado)}
-          hint="Según compras confirmadas"
           tone="savings"
         />
         <MetricCard
           icon={ShoppingBasket}
           label="Compra pendiente"
-          value={plural(basketUnits, "producto")}
+          value={hydrated ? plural(basketUnits, "producto") : "—"}
           hint={basket.length ? "Lista para comparar" : "Aún vacía"}
         />
       </div>
 
-      {/* Compra pendiente destacada */}
-      {basket.length > 0 && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
-            <div>
-              <p className="text-sm font-bold text-foreground">Tienes una compra pendiente sin comparar</p>
-              <p className="text-sm text-muted-foreground">
-                {plural(basket.length, "producto")} · {plural(basketUnits, "unidad", "unidades")}
+      {/* Presupuesto del mes + compra pendiente */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <BudgetProgress spent={gastoMes} budget={monthlyBudget} />
+
+        {basket.length > 0 ? (
+          <Card className="cw-pulse border-2 border-primary bg-primary/5">
+            <CardContent className="flex h-full flex-col justify-between gap-4 p-5">
+              <div>
+                <p className="inline-flex items-center gap-2 text-sm font-extrabold text-primary">
+                  <ShoppingBasket className="size-4" /> Compra pendiente
+                </p>
+                <p className="mt-1 text-2xl font-extrabold text-foreground">
+                  {plural(basket.length, "producto")}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {plural(basketUnits, "unidad", "unidades")} lista para comparar
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button asChild variant="outline">
+                  <Link href="/compra-pendiente">Ver compra</Link>
+                </Button>
+                <Button onClick={() => compareItems(basket)}>
+                  <Scale /> Comparar supermercados
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-dashed">
+            <CardContent className="flex h-full flex-col items-start justify-center gap-2 p-5">
+              <p className="inline-flex items-center gap-2 text-sm font-bold text-foreground">
+                <ShoppingBasket className="size-4 text-muted-foreground" /> Sin compra pendiente
               </p>
-            </div>
-            <div className="flex gap-2">
-              <Button asChild variant="outline">
-                <Link href="/compra-pendiente">Ver compra</Link>
+              <p className="text-sm text-muted-foreground">
+                Busca productos y agrégalos para comparar supermercados.
+              </p>
+              <Button asChild size="sm" className="mt-1">
+                <Link href="/productos">
+                  Buscar productos <ArrowRight />
+                </Link>
               </Button>
-              <Button onClick={() => compareItems(basket)}>
-                <Scale /> Comparar supermercados
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Gráficos (máximo dos) */}
       <div className="grid gap-5 lg:grid-cols-2">
@@ -118,7 +135,7 @@ export default function DashboardPage() {
         <SectionHeading
           eyebrow="Oportunidades"
           title="Diferencias destacadas"
-          description="Las mayores brechas de precio entre supermercados. Toca una para agregarla a tu compra."
+          description="Las mayores brechas de precio entre supermercados (20% o más). Toca una para agregarla a tu compra."
         />
         <DealsCarousel limit={12} onAdd={addToBasket} />
       </section>
@@ -209,12 +226,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Estado de datos */}
-      <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-        <p className="text-xs font-bold uppercase tracking-widest text-primary">Estado de los datos</p>
-        <StoreCoverage />
-      </section>
     </div>
   );
 }

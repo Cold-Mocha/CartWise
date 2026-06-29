@@ -1,4 +1,11 @@
-import type { BasketComparison, BasketItem, Health, SearchItem } from "@/types/cartwise";
+import type {
+  BasketComparison,
+  BasketItem,
+  CategoryDeals,
+  Health,
+  ProductOffers,
+  SearchItem,
+} from "@/types/cartwise";
 
 // Cliente de la API de Cartwise. Toda llamada HTTP a las route handlers pasa por
 // aquí: los componentes visuales NO hacen fetch directo (plan §17).
@@ -22,6 +29,17 @@ export function getHealth() {
 export async function getTopDeals(limit = 8) {
   const data = await request<{ items: SearchItem[] }>(`/api/deals/top?limit=${limit}`);
   return data.items;
+}
+
+export async function getDealsByCategory(perCategory = 10, categories = 6) {
+  const data = await request<{ groups: CategoryDeals[] }>(
+    `/api/deals/by-category?perCategory=${perCategory}&categories=${categories}`,
+  );
+  return data.groups;
+}
+
+export function getProductOffers(id: number) {
+  return request<ProductOffers>(`/api/products/${id}/offers`);
 }
 
 export async function searchExactProducts(query: string, limit: number) {

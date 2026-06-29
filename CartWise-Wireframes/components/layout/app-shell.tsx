@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppHeader } from "./app-header";
 import { SiteFooter } from "./site-footer";
+import { OnboardingTour } from "@/components/onboarding/onboarding-tour";
 import { useAppState } from "@/components/state/app-state";
 
 /*
@@ -29,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <AppHeader />
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">{children}</main>
       <SiteFooter />
+      <OnboardingTour />
     </div>
   );
 }

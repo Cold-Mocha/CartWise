@@ -37,10 +37,20 @@ export function buildGenericFromProduct(item: BasketItem): BasketItem | null {
 }
 
 // ¿Una diferencia de precio entre tiendas es "destacada"? Umbral conservador
-// para no inflar el carrusel de oportunidades.
-export function isStrongDifference(item: SearchItem) {
+// para no inflar el carrusel de oportunidades. Regla del MVP: el precio más bajo
+// debe ser al menos 20% menor que el más alto del mismo producto comparable, es
+// decir precio_min <= precio_max * 0.8 (equiv. diferencia / precio_max >= 0.20).
+// Requiere comparación real entre 2+ tiendas.
+export const STRONG_DIFF_THRESHOLD = 0.2;
+
+export function strongDifferencePct(item: SearchItem): number | null {
+  const max = item.precio_max ?? 0;
   const diff = item.diferencia ?? 0;
-  const min = item.precio_min ?? 0;
-  if (!diff || !min) return false;
-  return diff >= 300 && diff / min >= 0.12;
+  if ((item.n_tiendas ?? 0) < 2 || max <= 0 || diff <= 0) return null;
+  return diff / max;
+}
+
+export function isStrongDifference(item: SearchItem) {
+  const pct = strongDifferencePct(item);
+  return pct !== null && pct >= STRONG_DIFF_THRESHOLD;
 }

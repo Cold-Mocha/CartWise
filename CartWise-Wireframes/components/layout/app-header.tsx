@@ -86,12 +86,20 @@ export function AppHeader() {
             </Link>
           </Button>
 
-          <Button asChild variant="outline" className="relative gap-2">
+          <Button
+            asChild
+            variant={basketUnits > 0 ? "default" : "outline"}
+            className="relative gap-2 transition-colors"
+          >
             <Link href="/compra-pendiente" aria-label="Ver compra pendiente">
               <ShoppingCart className="size-4" />
               <span className="hidden sm:inline">Compra pendiente</span>
               {basketUnits > 0 && (
-                <Badge variant="savings" className="ml-0.5 rounded-full px-1.5 py-0 text-[11px]">
+                <Badge
+                  key={basketUnits}
+                  variant="savings"
+                  className="cw-pop ml-0.5 rounded-full bg-primary-foreground px-1.5 py-0 text-[11px] text-primary"
+                >
                   {basketUnits}
                 </Badge>
               )}

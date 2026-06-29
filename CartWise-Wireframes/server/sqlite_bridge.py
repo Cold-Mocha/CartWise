@@ -283,6 +283,82 @@ def top_deals(con: sqlite3.Connection, payload: dict) -> dict:
     return {"items": exact}
 
 
+def deals_by_category(con: sqlite3.Connection, payload: dict) -> dict:
+    # Carruseles tipo supermercado: por cada categoría con más diferencias
+    # destacadas reales (>=20%, plan §4.4 y §5.2), devuelve sus mejores items.
+    # Solo lectura sobre la misma vista de comparación; no inventa datos.
+    per_category = min(20, positive_int(payload.get("perCategory"), 10))
+    max_categories = min(12, positive_int(payload.get("categories"), 6))
+    candidates = rows(
+        con.execute(
+            """
+            SELECT
+                id,
+                'product' AS kind,
+                ean,
+                nombre,
+                marca,
+                categoria,
+                n_tiendas,
+                precio_min,
+                precio_max,
+                diferencia,
+                min_offer.precio_min_store_key,
+                min_offer.precio_min_store_url,
+                min_offer.precio_min_disponible,
+                'Exacto por EAN' AS match_label
+            FROM v_comparacion vc
+            LEFT JOIN (
+                SELECT
+                    o.producto_marca_id,
+                    s.nombre AS precio_min_store_key,
+                    s.sitio_web AS precio_min_store_url,
+                    o.disponible AS precio_min_disponible
+                FROM oferta o
+                JOIN supermercado s ON s.id = o.supermercado_id
+                WHERE o.precio > 0
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM oferta o2
+                    WHERE o2.producto_marca_id = o.producto_marca_id
+                      AND o2.precio > 0
+                      AND (
+                        o2.precio < o.precio
+                        OR (o2.precio = o.precio AND o2.supermercado_id < o.supermercado_id)
+                      )
+                  )
+            ) min_offer ON min_offer.producto_marca_id = vc.id
+            WHERE n_tiendas >= 2
+              AND diferencia IS NOT NULL
+              AND precio_max > 0
+              AND diferencia >= precio_max * 0.2
+              AND categoria IS NOT NULL
+              AND categoria <> ''
+            ORDER BY diferencia DESC
+            LIMIT 800
+            """
+        )
+    )
+    groups: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for item in candidates:
+        cat = item["categoria"]
+        if cat not in groups:
+            groups[cat] = []
+            order.append(cat)
+        if len(groups[cat]) < per_category:
+            decorate_price_store(item)
+            groups[cat].append(item)
+    # Prioriza categorías con más items destacados.
+    order.sort(key=lambda c: len(groups[c]), reverse=True)
+    result = [
+        {"categoria": cat, "items": groups[cat]}
+        for cat in order[:max_categories]
+        if len(groups[cat]) >= 3
+    ]
+    return {"groups": result}
+
+
 def product_offers(con: sqlite3.Connection, payload: dict) -> dict:
     product_id = positive_int(payload.get("id"))
     product = con.execute(
@@ -526,6 +602,7 @@ def compare_basket(con: sqlite3.Connection, payload: dict) -> dict:
 OPERATIONS = {
     "health": health,
     "topDeals": top_deals,
+    "dealsByCategory": deals_by_category,
     "searchProducts": search_products,
     "searchGeneric": search_generic,
     "productOffers": product_offers,

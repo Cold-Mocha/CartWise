@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, X, Crown, Store } from "lucide-react";
+import { Check, X, Crown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { StoreLogo } from "@/components/brand/store-logo";
 import { money, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { StoreComparison } from "@/types/cartwise";
@@ -40,9 +41,7 @@ export function StoreComparisonCard({
       )}
       <CardContent className="space-y-4 p-5">
         <div className="flex items-center gap-2">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Store className="size-4" />
-          </span>
+          <StoreLogo name={comparison.store.label} size={36} />
           <h3 className="text-lg font-extrabold text-foreground">{comparison.store.label}</h3>
         </div>
 

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { PLAN_STATUS_LABELS, SNAPSHOT_FECHA, STORAGE_KEYS } from "@/lib/constants";
+import { DEFAULT_MONTHLY_BUDGET, PLAN_STATUS_LABELS, SNAPSHOT_FECHA, STORAGE_KEYS } from "@/lib/constants";
 import { loadJson, removeKey, saveJson } from "@/lib/storage";
 import { buildGenericFromProduct, planItemsSignature, savedPlanSignature } from "@/lib/basket";
 import { compareBasket } from "@/lib/api";
@@ -69,8 +69,13 @@ type AppState = {
   // Despensa.
   pantry: PantryItem[];
   addPantryItem: (draft: PantryItemDraft) => void;
+  addProductsToPantry: (items: SearchItem[]) => void;
   updatePantryQuantity: (id: string, quantity: number) => void;
   consumePantryItem: (id: string) => void;
+
+  // Presupuesto mensual (demo MVP, editable en estado local).
+  monthlyBudget: number;
+  setMonthlyBudget: (value: number) => void;
 };
 
 const AppStateContext = React.createContext<AppState | null>(null);
@@ -92,6 +97,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [history, setHistory] = React.useState<SavedPlan[]>([]);
   const [confirmed, setConfirmed] = React.useState<ConfirmedPurchase[]>([]);
   const [pantry, setPantry] = React.useState<PantryItem[]>([]);
+  const [monthlyBudget, setMonthlyBudgetState] = React.useState<number>(DEFAULT_MONTHLY_BUDGET);
   const [highlightedPlanId, setHighlightedPlanId] = React.useState<string | null>(null);
 
   // Hidratación: leer localStorage solo en cliente, tras el primer render, para
@@ -103,6 +109,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setHistory(loadJson<SavedPlan[]>(STORAGE_KEYS.history, []));
     setConfirmed(loadJson<ConfirmedPurchase[]>(STORAGE_KEYS.confirmed, []));
     setPantry(loadJson<PantryItem[]>(STORAGE_KEYS.pantry, []));
+    setMonthlyBudgetState(loadJson<number>(STORAGE_KEYS.budget, DEFAULT_MONTHLY_BUDGET));
     setHydrated(true);
   }, []);
 
@@ -122,6 +129,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (hydrated) saveJson(STORAGE_KEYS.pantry, pantry);
   }, [pantry, hydrated]);
+  React.useEffect(() => {
+    if (hydrated) saveJson(STORAGE_KEYS.budget, monthlyBudget);
+  }, [monthlyBudget, hydrated]);
 
   React.useEffect(() => {
     if (!highlightedPlanId) return;
@@ -252,6 +262,49 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       });
       return next;
     });
+  };
+
+  // Agrega varios productos del catálogo a la despensa (flujo de selección
+  // múltiple, plan §6.2). Guarda el mejor precio/tienda del snapshot al momento
+  // de agregar para poder mostrarlo luego en el hover sin volver a consultar.
+  const addProductsToPantry = (items: SearchItem[]) => {
+    if (!items.length) return;
+    const now = new Date().toISOString();
+    setPantry((current) => {
+      const next = [...current];
+      items.forEach((it) => {
+        const idx = next.findIndex(
+          (p) => p.productName.toLowerCase() === it.nombre.toLowerCase(),
+        );
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], quantity: next[idx].quantity + 1, updatedAt: now };
+        } else {
+          // Solo guardamos id/precio para productos exactos: el comparable
+          // genérico usa otro id y rompería la compra pendiente. Sin ese dato, el
+          // hover de la despensa muestra "Sin precio disponible" (correcto).
+          const exact = it.kind === "product";
+          next.unshift({
+            id: uid(),
+            productId: exact ? it.id : null,
+            productName: it.nombre,
+            category: it.categoria ?? null,
+            quantity: 1,
+            source: "manual",
+            addedAt: now,
+            updatedAt: now,
+            ean: exact ? it.ean ?? null : null,
+            bestPrice: exact ? it.precio_min ?? null : null,
+            bestPriceStore: exact ? it.precio_min_store_label ?? null : null,
+          });
+        }
+      });
+      return next;
+    });
+    toast.success(`${items.length} ${items.length === 1 ? "producto agregado" : "productos agregados"} a la despensa`);
+  };
+
+  const setMonthlyBudget = (value: number) => {
+    setMonthlyBudgetState(value > 0 ? Math.round(value) : DEFAULT_MONTHLY_BUDGET);
   };
 
   const addPantryItem = (data: PantryItemDraft) => {
@@ -470,6 +523,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     } else {
       toast.success("Compra confirmada y registrada");
     }
+    // La compra ya se concretó: vaciamos la compra pendiente y la comparación en
+    // curso y volvemos a Inicio, donde se ve el gasto del mes actualizado
+    // (plan §10 y §2).
+    setBasketState([]);
+    setComparison(null);
+    router.push("/dashboard");
   };
 
   const value: AppState = {
@@ -508,8 +567,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     confirmPurchase,
     pantry,
     addPantryItem,
+    addProductsToPantry,
     updatePantryQuantity,
     consumePantryItem,
+    monthlyBudget,
+    setMonthlyBudget,
   };
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

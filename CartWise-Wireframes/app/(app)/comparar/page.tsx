@@ -6,7 +6,7 @@ import { useAppState } from "@/components/state/app-state";
 import { StoreComparisonCard } from "@/components/comparison/store-comparison-card";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
-import { TransparencyNote } from "@/components/common/transparency-note";
+import { StoreLogo } from "@/components/brand/store-logo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -113,7 +113,10 @@ export default function CompararPage() {
                   <TableHead>Producto</TableHead>
                   {stores.map((s) => (
                     <TableHead key={s.store.id} className="text-right">
-                      {s.store.label}
+                      <span className="inline-flex items-center gap-1.5">
+                        <StoreLogo name={s.store.label} size={22} />
+                        {s.store.label}
+                      </span>
                     </TableHead>
                   ))}
                 </TableRow>
@@ -153,7 +156,6 @@ export default function CompararPage() {
             </Table>
           </CardContent>
         </Card>
-        <TransparencyNote />
       </section>
     </div>
   );
