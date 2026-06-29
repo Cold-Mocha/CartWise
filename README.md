@@ -11,7 +11,7 @@ y ofrece una web app donde el usuario arma una compra y descubre dónde comprar 
 > y vestuario.
 
 Este documento es la **fuente única de contexto** del proyecto (estado, propósito,
-arquitectura, funcionamiento y wireframes). Consolida los antiguos docs de estado y plan.
+arquitectura y funcionamiento). Consolida los antiguos docs de estado y plan.
 Se conserva como material fuente sin consolidar: `Scrapper/docs/investigaciones/`
 (investigación original de las 6 cadenas y análisis de El Trébol).
 
@@ -33,7 +33,7 @@ supermercados chilenos usando **datos de catálogo previamente capturados y norm
 
 1. **Landing pública** — explica Cartwise, muestra supermercados cubiertos y un carrusel de
    oportunidades destacadas (diferencias de precio entre tiendas).
-2. **Login demo** — entrada simple al prototipo, sin autenticación real.
+2. **Login demo** — entrada simple a la app demo, sin autenticación real.
 3. **Dashboard mensual** — gasto del mes, ahorro estimado y confirmado, historial reciente,
    diferencias destacadas, compra pendiente, despensa y estado del snapshot.
 4. **Búsqueda de productos** — catálogo con precio, tienda, categoría y tipo de coincidencia
@@ -77,7 +77,12 @@ Los precios son **referenciales** y dependen del **último snapshot disponible**
 disponibilidad y los valores pueden cambiar en tienda. No hay scraping desde la UI ni
 precios en vivo.
 
-### Ejecución (web app)
+### Requisitos y ejecución rápida (web app)
+
+Requisitos locales:
+- Node.js 20.19+ o 22.12+ (el lock actual incluye dependencias con esa restricción).
+- Python 3.12+ con `sqlite3` de la librería estándar.
+- Mart SQLite disponible en `Scrapper/datos/comparadores/comparador.sqlite`.
 
 ```bash
 cd CartWise-Wireframes
@@ -87,13 +92,21 @@ npm run build      # build del frontend
 npm run lint       # tsc --noEmit
 ```
 
+La API usa por defecto `../Scrapper/datos/comparadores/comparador.sqlite`. Para apuntar a
+otro mart:
+
+```bash
+CARTWISE_DB_PATH=/ruta/al/comparador.sqlite npm run dev:api
+```
+
+No se requiere `.env` para el MVP actual. Las variables heredadas de AI Studio
+(`GEMINI_API_KEY`, `APP_URL`) no participan en el flujo principal documentado aquí.
+
 ### Notas para futuras IAs / desarrolladores
 
-Los archivos marcados con `@deprecated` (p. ej. `src/features/profile/*`,
-`src/components/screens/*`, `src/components/DesignCanvas.tsx`,
-`src/components/WireframeComponents.tsx`) están **fuera del MVP**: se conservan como
-referencia y **no deben reactivarse** sin actualizar primero este alcance del MVP y el
-resto del README. La terminología vigente es: *compra pendiente*, *listas guardadas*,
+Los archivos marcados con `@deprecated` (p. ej. `src/features/profile/*`) están
+**fuera del MVP** y **no deben reactivarse** sin actualizar primero este alcance del MVP y
+el resto del README. La terminología vigente es: *compra pendiente*, *listas guardadas*,
 *historial de compras*, *despensa / almacén del hogar*, *diferencias destacadas* y
 *ofertas temporales* (solo con señal real de oferta en los datos).
 
@@ -112,12 +125,12 @@ CartWise/
 │
 └── CartWise-Wireframes/   # Web app (React 19 + Vite + Express + bridge Python)
     ├── src/web/                 # Shell web + composición principal
+    ├── src/App.tsx              # Entrada React: renderiza únicamente WebApp
     ├── src/domain/              # Tipos y constantes de dominio
     ├── src/services/            # API Cartwise + persistencia local
     ├── src/hooks/               # Flujos de estado por proceso
     ├── src/features/            # Pantallas/componentes por dominio funcional
     ├── src/components/ui/       # UI reutilizable compartida
-    ├── src/components/screens/  # Prototipo móvil — SOLO referencia de diseño, no se enruta
     ├── src/lib/                 # Helpers puros
     ├── src/index.css            # Estilos globales
     ├── server/index.ts          # API Express (puerto 3001)
@@ -126,6 +139,12 @@ CartWise/
 
 La web consume el mart que produce el Scrapper:
 `Scrapper/datos/comparadores/comparador.sqlite`.
+
+Artefactos regenerables / locales:
+- `CartWise-Wireframes/dist/` se genera con `npm run build`.
+- `CartWise-Wireframes/node_modules/` se genera con `npm install`.
+- `CartWise-Wireframes/public/images/products/` contiene miniaturas descargadas por
+  `Scrapper/scripts/descargar_imagenes.py`; se ignora en Git por volumen.
 
 ---
 
@@ -260,12 +279,25 @@ python3 -m scripts.scraper_vtex --store jumbo --load-only
 python3 -m comparadores.construir_comparador
 ```
 
-Inspección rápida:
+Inspección rápida si tienes instalado `sqlite3`:
 ```bash
 sqlite3 datos/staging/trebol.sqlite "SELECT COUNT(*), COUNT(ean) FROM producto;"
 sqlite3 datos/comparadores/comparador.sqlite \
   "SELECT nombre_generico, n_tiendas, ROUND(precio_unitario_min), ROUND(precio_unitario_max) \
    FROM v_comparacion_generica WHERE n_tiendas=4 ORDER BY diferencia_unitaria DESC LIMIT 10;"
+```
+
+Fallback sin CLI de SQLite:
+
+```bash
+python3 - <<'PY'
+import sqlite3
+
+con = sqlite3.connect("datos/comparadores/comparador.sqlite")
+for nombre, total in con.execute("SELECT nombre, COUNT(*) FROM supermercado GROUP BY nombre"):
+    print(nombre, total)
+con.close()
+PY
 ```
 
 ---
@@ -296,8 +328,7 @@ Frontend React/Vite (puerto 3000)
 ```
 
 - **Una sola experiencia** se renderiza en `/`: la web app de escritorio/responsive
-  (`src/web/WebApp.tsx`). El prototipo móvil (`DesignCanvas` + `components/screens/*`) se
-  conserva **solo como referencia de diseño**: no se enruta ni se grafica (ver §11).
+  (`src/App.tsx` → `src/web/WebApp.tsx`).
 - Login **demo local**: `test@gmail.com` / `pass123`. Sesión, compra pendiente, historial,
   listas y despensa en `localStorage` (no hay backend de persistencia).
 - Tiendas disponibles = las 4 del mart: El Trébol, Jumbo, Santa Isabel, Unimarc.
@@ -361,17 +392,25 @@ Reglas actuales de organización:
 - Los helpers que no renderizan interfaz viven en `src/lib/`.
 - Las reglas de comparación de negocio siguen en el backend/mart y en el endpoint existente
   `POST /api/basket/compare`; el frontend no inventa matches nuevos.
-- `src/components/screens/*` se conserva como referencia visual histórica y no se elimina.
-
 **Scripts:**
 ```bash
 cd /home/delia/Documentos/CartWise/CartWise-Wireframes
 npm install
 npm run dev:full   # front (3000) + API (3001) juntos
+npm run dev        # solo frontend Vite; proxy /api a localhost:3001
+npm run dev:api    # solo API Express (lee comparador.sqlite)
 npm run build      # build del frontend
 npm run start      # API Express; sirve dist/ si existe
 npm run lint       # tsc --noEmit
 ```
+
+Variables útiles para desarrollo:
+- `PORT`: cambia el puerto de la API Express (default `3001`).
+- `CARTWISE_DB_PATH`: ruta absoluta o relativa a otro `comparador.sqlite`.
+- `DISABLE_HMR=true`: desactiva HMR en Vite cuando se ejecuta en entornos tipo AI Studio.
+
+La app no necesita `GEMINI_API_KEY` para este MVP; la referencia existe solo como resto de
+la plantilla original.
 
 > **Nota:** este `README.md` raíz es la referencia válida del proyecto. Si aparece
 > documentación interna generada por herramientas en `CartWise-Wireframes/`, debe tratarse
@@ -428,11 +467,6 @@ El backlog UX priorizado (`PLAN_UX_UNIFICADO` §13, refundido de los diagnóstic
 **No-objetivos del MVP (fuera de alcance por diseño, no son deuda):** OCR de boletas;
 autenticación real; >4 tiendas / base nacional / multi-zona; persistencia de
 canastas/planes en backend; vistas de detalle por producto con historial de precios.
-
-**Prototipo móvil (`src/App.tsx` + `components/screens/*`):** flujo navegable con datos
-mock (landing → registro → onboarding → home → plan → boleta → comparación →
-verificación → historial → perfil). **Desechado como implementación**, se conserva solo
-como referencia conceptual de negocio. No se enruta ni se renderiza en `/`.
 
 ---
 
