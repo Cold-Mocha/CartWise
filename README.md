@@ -3,7 +3,7 @@
 Comparador de precios de supermercados chilenos. CartWise toma un *snapshot* del
 catálogo de comida de las principales cadenas, lo normaliza a un esquema común,
 **compara el precio del mismo producto entre tiendas usando el EAN (código de barras)**
-y ofrece una web app donde el usuario arma una canasta y descubre dónde comprar más barato.
+y ofrece una web app donde el usuario arma una compra y descubre dónde comprar más barato.
 
 > **Propósito:** investigación / uso personal y demostración académica (no comercial).
 > **Alcance de datos = SOLO COMIDA:** comestible o bebible (incluido alcohol). Se excluye
@@ -14,6 +14,88 @@ Este documento es la **fuente única de contexto** del proyecto (estado, propós
 arquitectura, funcionamiento y wireframes). Consolida los antiguos docs de estado y plan.
 Se conserva como material fuente sin consolidar: `Scrapper/docs/investigaciones/`
 (investigación original de las 6 cadenas y análisis de El Trébol).
+
+---
+
+## 0. Alcance del MVP actual
+
+> Esta sección define **qué es el MVP hoy**. Tiene prioridad sobre cualquier otra
+> parte de este documento o del código. Las Partes A (Scrapper) y B (web) describen la
+> arquitectura completa; varias capacidades ahí documentadas están **fuera del MVP**.
+
+### Descripción breve
+
+Cartwise es un **MVP académico / no comercial** para comparar precios de alimentos entre
+supermercados chilenos usando **datos de catálogo previamente capturados y normalizados**
+(no es un sistema de precios en tiempo real).
+
+### Funcionalidades del MVP (activas)
+
+1. **Landing pública** — explica Cartwise, muestra supermercados cubiertos y un carrusel de
+   oportunidades destacadas (diferencias de precio entre tiendas).
+2. **Login demo** — entrada simple al prototipo, sin autenticación real.
+3. **Dashboard mensual** — gasto del mes, ahorro estimado y confirmado, historial reciente,
+   diferencias destacadas, compra pendiente, despensa y estado del snapshot.
+4. **Búsqueda de productos** — catálogo con precio, tienda, categoría y tipo de coincidencia
+   (exacta por EAN o comparable genérico).
+5. **Compra pendiente** — agregar/quitar productos y cambiar cantidades.
+6. **Comparación entre supermercados** — total por tienda, faltantes y cobertura.
+7. **Plan recomendado** — recomienda priorizando cobertura y luego precio.
+8. **Historial de compras** — compras confirmadas y planes guardados; repetir compra.
+9. **Listas guardadas simples** — guardar una compra para repetirla rápido.
+10. **Despensa simulada (almacén del hogar)** — ver, agregar, quitar y ajustar cantidades;
+    enviar a despensa los productos de una compra confirmada.
+
+### Supermercados cubiertos
+
+**Activos (integrados al snapshot):** Jumbo · Santa Isabel · Unimarc · El Trébol.
+
+**Próximamente / fuera del MVP:** Tottus · Líder (aún no están en el mart).
+
+### Qué NO hace el MVP
+
+- No tiene OCR funcional de boletas.
+- No tiene login ni autenticación real.
+- No tiene pagos ni suscripción.
+- No muestra precios en tiempo real (son referenciales según el último snapshot).
+- No cubre todos los supermercados (solo 4).
+- No cubre todas las categorías (solo comida y bebida).
+- No recomienda usando IA.
+- No tiene predicción de precios.
+- No tiene rutas ni mapas.
+
+### Flujo principal del MVP
+
+```text
+Landing → Login demo → Dashboard → Buscar productos → Compra pendiente
+  → Comparación → Plan recomendado → Confirmar/guardar compra → Historial / Despensa
+```
+
+### Sobre los datos
+
+Los precios son **referenciales** y dependen del **último snapshot disponible**; la
+disponibilidad y los valores pueden cambiar en tienda. No hay scraping desde la UI ni
+precios en vivo.
+
+### Ejecución (web app)
+
+```bash
+cd CartWise-Wireframes
+npm install
+npm run dev:full   # front (3000) + API (3001) juntos
+npm run build      # build del frontend
+npm run lint       # tsc --noEmit
+```
+
+### Notas para futuras IAs / desarrolladores
+
+Los archivos marcados con `@deprecated` (p. ej. `src/features/profile/*`,
+`src/components/screens/*`, `src/components/DesignCanvas.tsx`,
+`src/components/WireframeComponents.tsx`) están **fuera del MVP**: se conservan como
+referencia y **no deben reactivarse** sin actualizar primero este alcance del MVP y el
+resto del README. La terminología vigente es: *compra pendiente*, *listas guardadas*,
+*historial de compras*, *despensa / almacén del hogar*, *diferencias destacadas* y
+*ofertas temporales* (solo con señal real de oferta en los datos).
 
 ---
 
@@ -29,9 +111,15 @@ CartWise/
 │   └── docs/investigaciones/   # Investigación original (material fuente, no se borra)
 │
 └── CartWise-Wireframes/   # Web app (React 19 + Vite + Express + bridge Python)
-    ├── src/web/WebApp.tsx       # App web principal (única experiencia renderizada en /)
-    ├── src/index.css            # Estilos
+    ├── src/web/                 # Shell web + composición principal
+    ├── src/domain/              # Tipos y constantes de dominio
+    ├── src/services/            # API Cartwise + persistencia local
+    ├── src/hooks/               # Flujos de estado por proceso
+    ├── src/features/            # Pantallas/componentes por dominio funcional
+    ├── src/components/ui/       # UI reutilizable compartida
     ├── src/components/screens/  # Prototipo móvil — SOLO referencia de diseño, no se enruta
+    ├── src/lib/                 # Helpers puros
+    ├── src/index.css            # Estilos globales
     ├── server/index.ts          # API Express (puerto 3001)
     └── server/sqlite_bridge.py  # Helper Python que lee comparador.sqlite
 ```
@@ -210,9 +298,70 @@ Frontend React/Vite (puerto 3000)
 - **Una sola experiencia** se renderiza en `/`: la web app de escritorio/responsive
   (`src/web/WebApp.tsx`). El prototipo móvil (`DesignCanvas` + `components/screens/*`) se
   conserva **solo como referencia de diseño**: no se enruta ni se grafica (ver §11).
-- Login **demo local**: `test@gmail.com` / `pass123`. Sesión, canasta e historial en
-  `localStorage` (no hay backend de persistencia).
+- Login **demo local**: `test@gmail.com` / `pass123`. Sesión, compra pendiente, historial,
+  listas y despensa en `localStorage` (no hay backend de persistencia).
 - Tiendas disponibles = las 4 del mart: El Trébol, Jumbo, Santa Isabel, Unimarc.
+
+### Arquitectura interna del frontend
+
+El frontend fue ordenado para que `src/web/WebApp.tsx` actúe como composición general
+de la app y no como contenedor de toda la lógica. `WebApp.tsx` inicializa hooks, carga
+estado base, maneja la vista actual y renderiza la pantalla correspondiente dentro de
+`WebShell`.
+
+```text
+src/web/
+  WebApp.tsx          # Composición: auth, hooks principales, routing de vistas
+  WebShell.tsx        # Layout web, navegación desktop/móvil y región de toast
+
+src/domain/
+  types.ts            # View, SearchItem, BasketItem, BasketComparison, SavedPlan, Account...
+  constants.ts        # Credenciales demo, claves localStorage, snapshot, comunas, tabs, etc.
+
+src/lib/
+  api.ts              # Wrapper fetch genérico
+  basket.ts           # Helpers puros de canasta/firma/comparable genérico
+  format.ts           # money, plural, fechas de mes
+  storage.ts          # JSON helpers para localStorage
+  validation.ts       # Validación de cuenta/perfil
+
+src/services/
+  cartwiseApi.ts          # Endpoints /api/* centralizados
+  localStorageService.ts  # Lectura/escritura local centralizada
+
+src/hooks/
+  useDemoAuth.ts
+  useToast.ts
+  useBasket.ts
+  useComparison.ts
+  useHistory.ts
+  useAccount.ts
+  useSavedLists.ts
+  usePantry.ts
+  useDashboardMetrics.ts
+
+src/features/
+  dashboard/      # Dashboard, presupuesto y gráficos
+  products/       # Búsqueda, filtros, tarjetas e imagen de producto
+  basket/         # Armado de plan/canasta
+  comparison/     # Resultado por supermercado
+  history/        # Historial, detalle y confirmación de compra
+  lists/          # Listas guardadas
+  pantry/         # Almacén/despensa
+  profile/        # Perfil demo — @deprecated, FUERA del MVP (no se enruta)
+  public/         # Landing pública y login
+
+src/components/ui/
+  Hero, MetricCard, PanelHeader, EmptyState, Modal, Toast, Badge, Button
+```
+
+Reglas actuales de organización:
+- Los componentes y pantallas no conocen detalles de endpoints; llaman a `services/cartwiseApi.ts`.
+- El acceso a `localStorage` está encapsulado en `services/localStorageService.ts`.
+- Los helpers que no renderizan interfaz viven en `src/lib/`.
+- Las reglas de comparación de negocio siguen en el backend/mart y en el endpoint existente
+  `POST /api/basket/compare`; el frontend no inventa matches nuevos.
+- `src/components/screens/*` se conserva como referencia visual histórica y no se elimina.
 
 **Scripts:**
 ```bash
@@ -224,9 +373,9 @@ npm run start      # API Express; sirve dist/ si existe
 npm run lint       # tsc --noEmit
 ```
 
-> **Nota:** el `README.md` interno de `CartWise-Wireframes/` es boilerplate de Google AI
-> Studio (menciona `GEMINI_API_KEY`) y **no describe el proyecto real** (Express + SQLite).
-> Está desactualizado; este documento es la referencia válida.
+> **Nota:** este `README.md` raíz es la referencia válida del proyecto. Si aparece
+> documentación interna generada por herramientas en `CartWise-Wireframes/`, debe tratarse
+> como secundaria frente a este documento.
 
 ## 9. API (endpoints)
 
@@ -247,14 +396,18 @@ que la recomendada).
 
 ## 10. Pantallas y flujo
 
-Pantallas: Login demo · Dashboard (métricas reales del mart) · Comparar/canasta ·
-Explorador de precios · Resultado de comparación por supermercado · Historial local · Perfil.
+Pantallas del MVP: Login demo · Dashboard (métricas reales del mart) · Buscar productos ·
+Compra pendiente · Resultado de comparación por supermercado · Historial local ·
+Listas guardadas · Almacén/despensa.
+
+> El Perfil queda **fuera del MVP** (`src/features/profile/*`, `@deprecated`): no aparece
+> en el menú ni se enruta.
 
 Navegación: sidebar fija en desktop, bottom nav en móvil/tablet.
 
 ```text
-login → dashboard → comparar → buscar producto → agregar a canasta
-  → comparar supermercados → guardar plan → historial
+login → dashboard → buscar producto → agregar a compra pendiente
+  → comparar supermercados → plan recomendado → guardar/confirmar → historial / despensa
 ```
 
 ## 11. Estado UX (revisión estática de código)
@@ -293,7 +446,9 @@ como referencia conceptual de negocio. No se enruta ni se renderiza en `/`.
 
 **Web:**
 1. Verificación de accesibilidad real (lector de pantalla, teclado, reflow) — ver §11.
-2. Fases futuras (post-MVP): auth real, persistencia en backend, curación de candidatos
+2. Seguir reduciendo componentes grandes de feature, especialmente `ProfileView.tsx`,
+   si se requiere más granularidad.
+3. Fases futuras (post-MVP): auth real, persistencia en backend, curación de candidatos
    en UI, sumar Tottus/Líder cuando el scraper los tenga, detalle por producto con histórico.
 
 ## 13. Marco legal y ético (Chile)

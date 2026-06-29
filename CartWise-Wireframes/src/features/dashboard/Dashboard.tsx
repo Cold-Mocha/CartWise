@@ -61,7 +61,6 @@ export function Dashboard({
     pendingPlan,
     basketUnits,
     recentPurchases,
-    alertas,
   } = useDashboardMetrics({basket, history, confirmed, budget});
 
   const metricNum = (value?: number) =>
@@ -223,17 +222,6 @@ export function Dashboard({
           )}
         </div>
       </section>
-
-      {alertas.length > 0 && (
-        <div className="cw-panel">
-          <PanelHeader title="Alertas" subtitle="Recordatorios según tu actividad" />
-          <ul className="cw-alert-list" role="list">
-            {alertas.map((text, i) => (
-              <li key={i}>{text}</li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       <div className="cw-panel">
         <PanelHeader title="Estado de los datos" subtitle="Transparencia del snapshot" />

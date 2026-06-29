@@ -1059,6 +1059,20 @@ a:focus-visible,
   line-height: 1.45;
 }
 
+.cw-basket-pantry-warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--color-secondary-light);
+  color: var(--color-secondary-text);
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .cw-mini-list {
   display: flex;
   flex-direction: column;

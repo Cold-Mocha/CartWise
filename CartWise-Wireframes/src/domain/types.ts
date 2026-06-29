@@ -1,4 +1,5 @@
-export type View = 'dashboard' | 'plan' | 'prices' | 'lists' | 'comparison' | 'history' | 'pantry' | 'profile';
+// 'profile' queda FUERA del MVP actual (ver ProfileView.tsx, marcado @deprecated).
+export type View = 'dashboard' | 'plan' | 'prices' | 'lists' | 'comparison' | 'history' | 'pantry';
 export type MatchKind = 'product' | 'generic';
 export type PlanStatus = 'pending' | 'purchased' | 'discarded';
 export type MatchFilter = 'all' | MatchKind;

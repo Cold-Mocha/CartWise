@@ -18,7 +18,6 @@ import {ListsView} from '../features/lists/ListsView';
 import {SaveListModal} from '../features/lists/SaveListModal';
 import {PantryView} from '../features/pantry/PantryView';
 import {PriceExplorer} from '../features/products/PriceExplorer';
-import {ProfileView} from '../features/profile/ProfileView';
 import {LoginScreen} from '../features/public/LoginScreen';
 import {PublicLanding} from '../features/public/PublicLanding';
 import {WebShell} from './WebShell';
@@ -121,6 +120,7 @@ export function WebApp() {
       {view === 'plan' && (
         <PlanBuilder
           basket={basket.basket}
+          pantry={pantry.pantry}
           onAdd={basket.addToBasket}
           onQuantity={basket.updateQuantity}
           onRemove={basket.removeFromBasket}
@@ -169,12 +169,6 @@ export function WebApp() {
           onQuantity={pantry.updatePantryQuantity}
           onConsume={pantry.consumePantryItem}
           onNavigate={setView}
-        />
-      )}
-      {view === 'profile' && (
-        <ProfileView
-          account={account.account}
-          onAccountChange={account.setAccount}
         />
       )}
       {history.confirmingPlan && (

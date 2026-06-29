@@ -1,12 +1,15 @@
 import {Fragment, useRef} from 'react';
-import {ListChecks} from 'lucide-react';
-import type {BasketItem} from '../../domain/types';
+import {AlertTriangle, ListChecks} from 'lucide-react';
+import type {BasketItem, PantryItem} from '../../domain/types';
 import {money, plural} from '../../lib/format';
 import {EmptyState, PanelHeader} from '../../components/ui';
 import {BasketItemRow} from './BasketItemRow';
 
+const normalize = (value: string) => value.trim().toLowerCase();
+
 export function BasketPanel({
   basket,
+  pantry,
   onQuantity,
   onRemove,
   onSwitchToGeneric,
@@ -16,6 +19,7 @@ export function BasketPanel({
   comparing,
 }: {
   basket: BasketItem[];
+  pantry: PantryItem[];
   onQuantity: (item: BasketItem, quantity: number) => void;
   onRemove: (item: BasketItem) => void;
   onSwitchToGeneric: (item: BasketItem) => void;
@@ -26,6 +30,9 @@ export function BasketPanel({
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const compareRef = useRef<HTMLButtonElement>(null);
+  const pantryNames = new Set(pantry.map((p) => normalize(p.productName)));
+  const pantryIds = new Set(pantry.map((p) => p.productId).filter((id): id is number => id != null));
+  const inPantry = (item: BasketItem) => pantryIds.has(item.id) || pantryNames.has(normalize(item.nombre));
   const units = basket.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = basket.reduce((sum, item) => sum + (item.precio_min ?? 0) * item.quantity, 0);
   const hasEstimate = basket.some((item) => item.precio_min != null);
@@ -58,6 +65,12 @@ export function BasketPanel({
                   onRemove={handleRemove}
                   onSwitchToGeneric={onSwitchToGeneric}
                 />
+                {inPantry(item) && (
+                  <p className="cw-basket-pantry-warn" role="note">
+                    <AlertTriangle size={14} aria-hidden="true" />
+                    Este producto ya está registrado en tu despensa
+                  </p>
+                )}
               </Fragment>
             ))}
           </div>

@@ -1,10 +1,11 @@
-import type {BasketItem, SearchItem} from '../../domain/types';
+import type {BasketItem, PantryItem, SearchItem} from '../../domain/types';
 import {Hero} from '../../components/ui';
 import {ProductSearch} from '../products/ProductSearch';
 import {BasketPanel} from './BasketPanel';
 
 export function PlanBuilder({
   basket,
+  pantry,
   onAdd,
   onQuantity,
   onRemove,
@@ -15,6 +16,7 @@ export function PlanBuilder({
   comparing,
 }: {
   basket: BasketItem[];
+  pantry: PantryItem[];
   onAdd: (item: SearchItem) => void;
   onQuantity: (item: BasketItem, quantity: number) => void;
   onRemove: (item: BasketItem) => void;
@@ -34,6 +36,7 @@ export function PlanBuilder({
         <ProductSearch onAdd={onAdd} />
         <BasketPanel
           basket={basket}
+          pantry={pantry}
           onQuantity={onQuantity}
           onRemove={onRemove}
           onSwitchToGeneric={onSwitchToGeneric}

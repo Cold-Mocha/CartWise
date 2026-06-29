@@ -1,3 +1,26 @@
+/**
+ * @deprecated Fuera del alcance del MVP actual de Cartwise.
+ *
+ * Este archivo se conserva como referencia para una etapa futura.
+ * No debe importarse ni usarse en la navegación principal del MVP.
+ *
+ * El perfil incluye conceptos fuera del MVP (autenticación real / 2FA,
+ * alertas de precio, notificaciones push, ubicación). Por eso queda inactivo.
+ *
+ * MVP actual:
+ * - Landing pública
+ * - Login demo
+ * - Dashboard mensual
+ * - Búsqueda de productos
+ * - Compra pendiente
+ * - Comparación y plan recomendado
+ * - Historial
+ * - Listas guardadas simples
+ * - Despensa simulada
+ *
+ * Si una IA o desarrollador encuentra este archivo, no debe reactivarlo
+ * sin actualizar primero el alcance del MVP y el README.md.
+ */
 import {useState, type Dispatch, type SetStateAction} from 'react';
 import {Settings, Trash2} from 'lucide-react';
 import {

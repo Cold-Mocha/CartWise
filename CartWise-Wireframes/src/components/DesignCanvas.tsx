@@ -1,3 +1,16 @@
+/**
+ * @deprecated Fuera del alcance del MVP actual de Cartwise.
+ *
+ * Prototipo móvil de exploración de UI. Se conserva como referencia para una
+ * etapa futura. No se enruta ni se renderiza: la única experiencia activa es la
+ * web principal (src/web/WebApp.tsx). Contiene flujos fuera del MVP (OCR de
+ * boletas, rutas/mapas, tiendas Líder/Tottus, etc.).
+ *
+ * No debe importarse en la navegación principal del MVP. Si una IA o
+ * desarrollador encuentra este archivo, no debe reactivarlo sin actualizar
+ * primero el alcance del MVP y el README.md.
+ */
+
 import React, { useRef, useCallback, useEffect, ReactNode, CSSProperties } from 'react';
 
 const DC = {

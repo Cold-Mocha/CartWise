@@ -6,9 +6,7 @@ import {
   LogOut,
   Package,
   Search,
-  Settings,
   ShoppingBasket,
-  User,
 } from 'lucide-react';
 import type {View} from '../domain/types';
 import {Toast} from '../components/ui';
@@ -20,7 +18,6 @@ const navItems: {id: View; label: string; icon: ReactNode}[] = [
   {id: 'lists', label: 'Listas', icon: <ListChecks size={18} aria-hidden="true" />},
   {id: 'history', label: 'Historial', icon: <History size={18} aria-hidden="true" />},
   {id: 'pantry', label: 'Almacén', icon: <Package size={18} aria-hidden="true" />},
-  {id: 'profile', label: 'Perfil', icon: <User size={18} aria-hidden="true" />},
 ];
 
 export function WebShell({
@@ -84,19 +81,6 @@ export function WebShell({
       <div className="cw-main">
         <header className="cw-topbar">
           <div className="cw-topbar-actions">
-            <button
-              type="button"
-              className="cw-account-btn"
-              onClick={() => onNavigate('profile')}
-              aria-label="Tu cuenta y preferencias"
-            >
-              <span className="cw-account-icon">
-                <User size={20} aria-hidden="true" />
-                <span className="cw-account-gear" aria-hidden="true">
-                  <Settings size={12} />
-                </span>
-              </span>
-            </button>
             <button type="button" className="cw-ghost-btn" onClick={onLogout}>
               <LogOut size={16} aria-hidden="true" />
               Salir
