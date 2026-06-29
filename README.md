@@ -84,31 +84,37 @@ Requisitos locales:
 - Python 3.12+ con `sqlite3` de la librería estándar.
 - Mart SQLite disponible en `Scrapper/datos/comparadores/comparador.sqlite`.
 
+El frontend está construido con **Next.js (App Router) + TypeScript + React + Tailwind
+CSS + shadcn/ui**. Las route handlers de Next (`app/api/*`) invocan el bridge Python que
+lee el mart SQLite, así que no se necesita un servidor Express aparte.
+
 ```bash
 cd CartWise-Wireframes
 npm install
-npm run dev:full   # front (3000) + API (3001) juntos
-npm run build      # build del frontend
-npm run lint       # tsc --noEmit
+npm run dev     # app Next.js en http://localhost:3000 (incluye la API)
+npm run build   # build de producción de Next.js
+npm run start   # sirve el build de producción
+npm run lint    # ESLint (eslint-config-next)
 ```
 
 La API usa por defecto `../Scrapper/datos/comparadores/comparador.sqlite`. Para apuntar a
-otro mart:
+otro mart, define `CARTWISE_DB_PATH` (ver `.env.example`):
 
 ```bash
-CARTWISE_DB_PATH=/ruta/al/comparador.sqlite npm run dev:api
+CARTWISE_DB_PATH=/ruta/al/comparador.sqlite npm run dev
 ```
 
 No se requiere `.env` para el MVP actual. Las variables heredadas de AI Studio
-(`GEMINI_API_KEY`, `APP_URL`) no participan en el flujo principal documentado aquí.
+(`GEMINI_API_KEY`, `APP_URL`) ya no participan en el flujo.
 
 ### Notas para futuras IAs / desarrolladores
 
-Los archivos marcados con `@deprecated` (p. ej. `src/features/profile/*`) están
-**fuera del MVP** y **no deben reactivarse** sin actualizar primero este alcance del MVP y
-el resto del README. La terminología vigente es: *compra pendiente*, *listas guardadas*,
-*historial de compras*, *despensa / almacén del hogar*, *diferencias destacadas* y
-*ofertas temporales* (solo con señal real de oferta en los datos).
+El frontend fue **reconstruido desde cero** en Next.js (junio 2026); el frontend anterior
+(Vite + Express + `src/`) fue eliminado. La terminología vigente es: *compra pendiente*
+(nunca "canasta activa"), *listas guardadas*, *historial de compras*, *despensa / almacén
+del hogar*, *diferencias destacadas* (brecha de precio entre tiendas) y *ofertas
+temporales* (solo con señal real de oferta en los datos). Nunca se prometen *precios en
+tiempo real*: son referenciales según el último snapshot.
 
 ---
 
@@ -123,25 +129,33 @@ CartWise/
 │   ├── datos/             # raw (JSONL) → staging (SQLite/tienda) → comparadores (mart) + snapshots
 │   └── docs/investigaciones/   # Investigación original (material fuente, no se borra)
 │
-└── CartWise-Wireframes/   # Web app (React 19 + Vite + Express + bridge Python)
-    ├── src/web/                 # Shell web + composición principal
-    ├── src/App.tsx              # Entrada React: renderiza únicamente WebApp
-    ├── src/domain/              # Tipos y constantes de dominio
-    ├── src/services/            # API Cartwise + persistencia local
-    ├── src/hooks/               # Flujos de estado por proceso
-    ├── src/features/            # Pantallas/componentes por dominio funcional
-    ├── src/components/ui/       # UI reutilizable compartida
-    ├── src/lib/                 # Helpers puros
-    ├── src/index.css            # Estilos globales
-    ├── server/index.ts          # API Express (puerto 3001)
-    └── server/sqlite_bridge.py  # Helper Python que lee comparador.sqlite
+└── CartWise-Wireframes/   # Web app (Next.js 16 App Router + TS + Tailwind + shadcn/ui)
+    ├── app/                     # Rutas (App Router) + globals.css + layout
+    │   ├── page.tsx                 # Landing pública
+    │   ├── login/                   # Login demo
+    │   ├── (app)/                   # Pantallas autenticadas (guard de sesión demo)
+    │   │   ├── dashboard/  productos/  compra-pendiente/
+    │   │   ├── comparar/  plan-recomendado/  historial/
+    │   │   └── listas/  despensa/
+    │   └── api/                     # Route handlers → bridge Python (health, deals,
+    │                                #   products/search, generic/search, offers, compare)
+    ├── components/              # UI por dominio
+    │   ├── ui/                      # Primitivos shadcn/ui personalizados
+    │   ├── state/                   # AppStateProvider (estado MVP + localStorage)
+    │   ├── product/  comparison/  dashboard/  history/  pantry/  purchase/
+    │   └── layout/  landing/  brand/  store/  common/
+    ├── lib/                     # api.ts, format.ts, storage.ts, constants.ts,
+    │   │                        #   basket.ts, text.ts, utils.ts
+    │   └── server/bridge.ts         # Runner del bridge Python (solo servidor)
+    ├── types/cartwise.ts        # Contratos de datos (espejan al bridge)
+    └── server/sqlite_bridge.py  # Helper Python que lee comparador.sqlite (conservado)
 ```
 
 La web consume el mart que produce el Scrapper:
 `Scrapper/datos/comparadores/comparador.sqlite`.
 
 Artefactos regenerables / locales:
-- `CartWise-Wireframes/dist/` se genera con `npm run build`.
+- `CartWise-Wireframes/.next/` se genera con `npm run build`.
 - `CartWise-Wireframes/node_modules/` se genera con `npm install`.
 - `CartWise-Wireframes/public/images/products/` contiene miniaturas descargadas por
   `Scrapper/scripts/descargar_imagenes.py`; se ignora en Git por volumen.
@@ -321,96 +335,50 @@ genérico por unidad**.
 ## 8. Arquitectura de la web
 
 ```text
-Frontend React/Vite (puerto 3000)
-  → proxy /api → API Express (puerto 3001)
+Next.js (App Router, puerto 3000)
+  → route handlers app/api/*  →  lib/server/bridge.ts (spawn python3)
   → server/sqlite_bridge.py (sqlite3 stdlib, modo solo lectura)
   → Scrapper/datos/comparadores/comparador.sqlite
 ```
 
-- **Una sola experiencia** se renderiza en `/`: la web app de escritorio/responsive
-  (`src/App.tsx` → `src/web/WebApp.tsx`).
-- Login **demo local**: `test@gmail.com` / `pass123`. Sesión, compra pendiente, historial,
-  listas y despensa en `localStorage` (no hay backend de persistencia).
+- Stack: **Next.js 16 + TypeScript + React 19 + Tailwind CSS v4 + shadcn/ui**.
+- La **API vive dentro de Next**: las route handlers de `app/api/*` invocan el mismo bridge
+  Python de siempre. No hay servidor Express; la lógica de comparación sigue intacta en el
+  bridge (`compare_basket`), el frontend no la reimplementa.
+- Login **demo**: no hay autenticación real. El botón "Entrar como demo" marca una bandera en
+  `localStorage`. Sesión, compra pendiente, historial, listas y despensa viven en
+  `localStorage` (no hay backend de usuarios).
 - Tiendas disponibles = las 4 del mart: El Trébol, Jumbo, Santa Isabel, Unimarc.
 
 ### Arquitectura interna del frontend
 
-El frontend fue ordenado para que `src/web/WebApp.tsx` actúe como composición general
-de la app y no como contenedor de toda la lógica. `WebApp.tsx` inicializa hooks, carga
-estado base, maneja la vista actual y renderiza la pantalla correspondiente dentro de
-`WebShell`.
+- **Rutas** en `app/`: landing (`/`), login (`/login`) y grupo autenticado `(app)/` con las
+  pantallas MVP. El grupo usa `AppShell`, que aplica el guard de sesión demo, el header con
+  navegación y el footer de transparencia.
+- **Estado** centralizado en `components/state/app-state.tsx` (`AppStateProvider`): un único
+  contexto con compra pendiente, comparación, listas, historial, compras confirmadas y
+  despensa. Hidrata desde `localStorage` tras montar (patrón SSR-safe, sin mismatch).
+- **Datos**: los componentes no hacen `fetch` directo; pasan por `lib/api.ts`. Los tipos en
+  `types/cartwise.ts` espejan la salida del bridge.
+- **UI**: primitivos shadcn/ui personalizados en `components/ui/` (button, card, badge,
+  input, dialog, sheet, tabs, select, dropdown-menu, progress, separator, skeleton, table,
+  carousel basado en Embla, toaster Sonner) con un sistema visual blanco/verde definido en
+  `app/globals.css` (tokens Tailwind v4 + `@theme`).
 
-```text
-src/web/
-  WebApp.tsx          # Composición: auth, hooks principales, routing de vistas
-  WebShell.tsx        # Layout web, navegación desktop/móvil y región de toast
-
-src/domain/
-  types.ts            # View, SearchItem, BasketItem, BasketComparison, SavedPlan, Account...
-  constants.ts        # Credenciales demo, claves localStorage, snapshot, comunas, tabs, etc.
-
-src/lib/
-  api.ts              # Wrapper fetch genérico
-  basket.ts           # Helpers puros de canasta/firma/comparable genérico
-  format.ts           # money, plural, fechas de mes
-  storage.ts          # JSON helpers para localStorage
-  validation.ts       # Validación de cuenta/perfil
-
-src/services/
-  cartwiseApi.ts          # Endpoints /api/* centralizados
-  localStorageService.ts  # Lectura/escritura local centralizada
-
-src/hooks/
-  useDemoAuth.ts
-  useToast.ts
-  useBasket.ts
-  useComparison.ts
-  useHistory.ts
-  useAccount.ts
-  useSavedLists.ts
-  usePantry.ts
-  useDashboardMetrics.ts
-
-src/features/
-  dashboard/      # Dashboard, presupuesto y gráficos
-  products/       # Búsqueda, filtros, tarjetas e imagen de producto
-  basket/         # Armado de plan/canasta
-  comparison/     # Resultado por supermercado
-  history/        # Historial, detalle y confirmación de compra
-  lists/          # Listas guardadas
-  pantry/         # Almacén/despensa
-  profile/        # Perfil demo — @deprecated, FUERA del MVP (no se enruta)
-  public/         # Landing pública y login
-
-src/components/ui/
-  Hero, MetricCard, PanelHeader, EmptyState, Modal, Toast, Badge, Button
-```
-
-Reglas actuales de organización:
-- Los componentes y pantallas no conocen detalles de endpoints; llaman a `services/cartwiseApi.ts`.
-- El acceso a `localStorage` está encapsulado en `services/localStorageService.ts`.
-- Los helpers que no renderizan interfaz viven en `src/lib/`.
-- Las reglas de comparación de negocio siguen en el backend/mart y en el endpoint existente
-  `POST /api/basket/compare`; el frontend no inventa matches nuevos.
 **Scripts:**
 ```bash
 cd /home/delia/Documentos/CartWise/CartWise-Wireframes
 npm install
-npm run dev:full   # front (3000) + API (3001) juntos
-npm run dev        # solo frontend Vite; proxy /api a localhost:3001
-npm run dev:api    # solo API Express (lee comparador.sqlite)
-npm run build      # build del frontend
-npm run start      # API Express; sirve dist/ si existe
-npm run lint       # tsc --noEmit
+npm run dev     # app Next.js (front + API) en http://localhost:3000
+npm run build   # build de producción
+npm run start   # sirve el build de producción
+npm run lint    # ESLint (eslint-config-next)
 ```
 
-Variables útiles para desarrollo:
-- `PORT`: cambia el puerto de la API Express (default `3001`).
-- `CARTWISE_DB_PATH`: ruta absoluta o relativa a otro `comparador.sqlite`.
-- `DISABLE_HMR=true`: desactiva HMR en Vite cuando se ejecuta en entornos tipo AI Studio.
-
-La app no necesita `GEMINI_API_KEY` para este MVP; la referencia existe solo como resto de
-la plantilla original.
+Variables útiles para desarrollo (ver `.env.example`):
+- `CARTWISE_DB_PATH`: ruta a otro `comparador.sqlite` (default
+  `../Scrapper/datos/comparadores/comparador.sqlite`).
+- `CARTWISE_PYTHON`: binario de Python para el bridge (default `python3`).
 
 > **Nota:** este `README.md` raíz es la referencia válida del proyecto. Si aparece
 > documentación interna generada por herramientas en `CartWise-Wireframes/`, debe tratarse
@@ -425,7 +393,7 @@ la plantilla original.
 | `GET /api/products/search?q=` | Búsqueda exacta por producto / EAN / marca (Capa 1). |
 | `GET /api/generic/search?q=` | Búsqueda de comparables genéricos (Capa 2). |
 | `GET /api/products/:id/offers` | Ofertas por tienda de un producto exacto. |
-| `POST /api/basket/compare` | Compara una canasta contra las tiendas disponibles. |
+| `POST /api/basket/compare` | Compara la compra pendiente contra las tiendas disponibles. |
 
 **Reglas de comparación:** Capa 1 (EAN) como match principal, Capa 2 (genérico) como
 fallback. Productos sin precio en una tienda → "Sin precio", no bloquean el cálculo. La
@@ -435,24 +403,32 @@ que la recomendada).
 
 ## 10. Pantallas y flujo
 
-Pantallas del MVP: Login demo · Dashboard (métricas reales del mart) · Buscar productos ·
-Compra pendiente · Resultado de comparación por supermercado · Historial local ·
-Listas guardadas · Almacén/despensa.
+Pantallas del MVP (10): **Landing pública** · **Login demo** · **Dashboard mensual** ·
+**Catálogo / búsqueda de productos** · **Compra pendiente** · **Comparación de
+supermercados** · **Plan recomendado** · **Historial de compras** · **Listas guardadas** ·
+**Despensa / almacén del hogar**.
 
-> El Perfil queda **fuera del MVP** (`src/features/profile/*`, `@deprecated`): no aparece
-> en el menú ni se enruta.
+> No hay perfil, login real, pagos, OCR ni precios en tiempo real (ver §0). El menú solo
+> contiene pantallas MVP; *comparar* y *plan recomendado* son pasos del flujo de compra.
 
-Navegación: sidebar fija en desktop, bottom nav en móvil/tablet.
+Navegación: header con nav en desktop y menú lateral (sheet) en móvil; la compra pendiente
+tiene su propio botón con contador.
 
 ```text
-login → dashboard → buscar producto → agregar a compra pendiente
-  → comparar supermercados → plan recomendado → guardar/confirmar → historial / despensa
+landing → entrar como demo → dashboard → buscar producto → agregar a compra pendiente
+  → comparar supermercados → plan recomendado → guardar/confirmar → enviar a despensa
+  → historial / despensa actualizados
 ```
 
-## 11. Estado UX (revisión estática de código)
+## 11. Estado UX (histórico del frontend anterior)
+
+> **Nota:** esta sección documenta el backlog UX del frontend **anterior** (Vite/React),
+> que fue **eliminado** al reconstruir la web desde cero en Next.js + shadcn/ui. Se conserva
+> como referencia de principios; los nombres de archivo/colores ya no corresponden al código
+> actual.
 
 El backlog UX priorizado (`PLAN_UX_UNIFICADO` §13, refundido de los diagnósticos
-`UX_REVIEW` + `UX_FLUJOS` + un track de accesibilidad) está **completo: 38/38 ítems**
+`UX_REVIEW` + `UX_FLUJOS` + un track de accesibilidad) estuvo **completo: 38/38 ítems**
 (Sprint 0 P0: 10/10 · Sprint 1 P1: 20/20 · Sprint 2 P2: 8/8).
 
 > "Hecho" = la regla o componente existe y está cableado en el código. Es una revisión
@@ -479,9 +455,11 @@ canastas/planes en backend; vistas de detalle por producto con historial de prec
 4. Confirmar dependencia de precios VTEX respecto a *sales channel* / región.
 
 **Web:**
-1. Verificación de accesibilidad real (lector de pantalla, teclado, reflow) — ver §11.
-2. Seguir reduciendo componentes grandes de feature, especialmente `ProfileView.tsx`,
-   si se requiere más granularidad.
+1. Verificación de accesibilidad real (lector de pantalla, teclado, reflow 200%/320px) en
+   el frontend reconstruido en Next.js. Las bases (foco visible, roles, `aria-label`,
+   estados vacíos) están, pero no se validó con tecnología asistiva.
+2. Animaciones de entrada/salida de Dialog/Sheet (sin `tw-animate-css`) y pruebas E2E del
+   flujo demo en navegador real.
 3. Fases futuras (post-MVP): auth real, persistencia en backend, curación de candidatos
    en UI, sumar Tottus/Líder cuando el scraper los tenga, detalle por producto con histórico.
 
