@@ -1,0 +1,12 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Imágenes de producto descargadas por Scrapper/scripts/descargar_imagenes.py
+# (regenerables; no se versionan ~28k binarios)
+public/images/products/

@@ -1,0 +1,6 @@
+Scrapper/datos/raw/
+Scrapper/datos/raw/
+Scrapper/datos/snapshots/**/raw/
+*.jsonl
+__pycache__/
+*.pyc
