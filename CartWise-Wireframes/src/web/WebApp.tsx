@@ -1,23 +1,31 @@
 import React, {ReactNode, useEffect, useRef, useState} from 'react';
 import {
+  ArrowRight,
+  Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   EyeOff,
   History,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   Package,
+  Plus,
   RefreshCcw,
   RotateCcw,
   Search,
   Settings,
   ShoppingBasket,
   Store,
+  Tag,
   Trash2,
+  TrendingUp,
   User,
 } from 'lucide-react';
 
-type View = 'dashboard' | 'plan' | 'prices' | 'comparison' | 'history' | 'profile';
+type View = 'dashboard' | 'plan' | 'prices' | 'lists' | 'comparison' | 'history' | 'pantry' | 'profile';
 type MatchKind = 'product' | 'generic';
 type PlanStatus = 'pending' | 'purchased' | 'discarded';
 type MatchFilter = 'all' | MatchKind;
@@ -119,6 +127,48 @@ type SavedPlan = {
   recommendedLines?: CompareLine[];
 };
 
+type ConfirmedPurchaseItem = {
+  productName: string;
+  quantity: number;
+  category?: string | null;
+  paidPrice?: number | null;
+};
+
+type ConfirmedPurchase = {
+  id: string;
+  planId?: string;
+  store: string;
+  purchaseDate: string; // ISO
+  estimatedTotal?: number | null;
+  realTotal: number;
+  estimatedSavings?: number | null;
+  confirmedSavings?: number | null;
+  items: ConfirmedPurchaseItem[];
+  createdAt: string;
+};
+
+type SavedList = {
+  id: string;
+  name: string;
+  items: BasketItem[];
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+};
+
+type PantryItem = {
+  id: string;
+  productId?: number | null;
+  productName: string;
+  category?: string | null;
+  quantity: number;
+  unit?: string | null;
+  source: 'confirmed_purchase' | 'manual';
+  addedAt: string;
+  updatedAt: string;
+  notes?: string;
+};
+
 type ProfileTab = 'cuenta' | 'ubicacion' | 'notificaciones' | 'seguridad';
 
 type Account = {
@@ -152,12 +202,18 @@ const AUTH_KEY = 'cartwise_demo_auth';
 const BASKET_KEY = 'cartwise_web_basket';
 const HISTORY_KEY = 'cartwise_web_history';
 const ACCOUNT_KEY = 'cartwise_web_account';
+const BUDGET_KEY = 'cartwise_web_budget';
+const CONFIRMED_KEY = 'cartwise_web_confirmed';
+const LISTS_KEY = 'cartwise_web_lists';
+const PANTRY_KEY = 'cartwise_web_pantry';
 
 const navItems: {id: View; label: string; icon: ReactNode}[] = [
   {id: 'dashboard', label: 'Inicio', icon: <LayoutDashboard size={18} aria-hidden="true" />},
+  {id: 'prices', label: 'Productos', icon: <Search size={18} aria-hidden="true" />},
   {id: 'plan', label: 'Comparar', icon: <ShoppingBasket size={18} aria-hidden="true" />},
-  {id: 'prices', label: 'Precios', icon: <Search size={18} aria-hidden="true" />},
+  {id: 'lists', label: 'Listas', icon: <ListChecks size={18} aria-hidden="true" />},
   {id: 'history', label: 'Historial', icon: <History size={18} aria-hidden="true" />},
+  {id: 'pantry', label: 'Almacén', icon: <Package size={18} aria-hidden="true" />},
   {id: 'profile', label: 'Perfil', icon: <User size={18} aria-hidden="true" />},
 ];
 
@@ -170,6 +226,7 @@ const COMUNAS = [
   'San Joaquín', 'La Cisterna', 'El Bosque', 'La Granja', 'San Bernardo',
 ];
 const SNAPSHOT_FECHA = '2026-06-24';
+const TRANSPARENCY_SNAPSHOT = `Precios referenciales según el último snapshot disponible (${SNAPSHOT_FECHA}).`;
 const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
   pending: 'Pendiente',
   purchased: 'Comprado',
@@ -260,6 +317,14 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json();
 }
 
+function monthKey(iso?: string) {
+  return (iso ?? new Date().toISOString()).slice(0, 7);
+}
+
+function currentMonthLabel() {
+  return new Date().toLocaleDateString('es-CL', {month: 'long', year: 'numeric'});
+}
+
 function loadJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -312,8 +377,15 @@ export function WebApp() {
     ...DEFAULT_ACCOUNT,
     ...loadJson<Partial<Account>>(ACCOUNT_KEY, {}),
   }));
+  const [budget, setBudget] = useState<number>(() => loadJson<number>(BUDGET_KEY, 0));
+  const [confirmed, setConfirmed] = useState<ConfirmedPurchase[]>(() => loadJson(CONFIRMED_KEY, []));
+  const [savedLists, setSavedLists] = useState<SavedList[]>(() => loadJson(LISTS_KEY, []));
+  const [pantry, setPantry] = useState<PantryItem[]>(() => loadJson(PANTRY_KEY, []));
   const [apiError, setApiError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [showLogin, setShowLogin] = useState(false);
+  const [confirmingPlan, setConfirmingPlan] = useState<SavedPlan | null>(null);
+  const [savingList, setSavingList] = useState(false);
 
   useEffect(() => {
     if (!authed) return;
@@ -347,6 +419,22 @@ export function WebApp() {
   }, [account]);
 
   useEffect(() => {
+    localStorage.setItem(BUDGET_KEY, JSON.stringify(budget));
+  }, [budget]);
+
+  useEffect(() => {
+    localStorage.setItem(CONFIRMED_KEY, JSON.stringify(confirmed));
+  }, [confirmed]);
+
+  useEffect(() => {
+    localStorage.setItem(LISTS_KEY, JSON.stringify(savedLists));
+  }, [savedLists]);
+
+  useEffect(() => {
+    localStorage.setItem(PANTRY_KEY, JSON.stringify(pantry));
+  }, [pantry]);
+
+  useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 2600);
     return () => clearTimeout(timer);
@@ -373,17 +461,17 @@ export function WebApp() {
       return [...current, {...item, quantity: 1}];
     });
     // No teletransportar: el usuario sigue donde está; se confirma con un toast.
-    setToast(`${item.nombre} · agregado a la canasta`);
+    setToast(`${item.nombre} · agregado a tu compra`);
   };
 
   const removeFromBasket = (item: BasketItem) => {
     setBasket((current) => current.filter((row) => !(row.id === item.id && row.kind === item.kind)));
-    setToast(`${item.nombre} · quitado de la canasta`);
+    setToast(`${item.nombre} · quitado de tu compra`);
   };
 
   const clearBasket = () => {
     setBasket([]);
-    setToast('Canasta vaciada');
+    setToast('Compra pendiente vaciada');
   };
 
   const updateQuantity = (item: BasketItem, quantity: number) => {
@@ -431,7 +519,7 @@ export function WebApp() {
       setComparison(data);
       setView('comparison');
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : 'No se pudo comparar la canasta.');
+      setApiError(error instanceof Error ? error.message : 'No se pudo comparar la compra.');
     } finally {
       setComparing(false);
     }
@@ -478,7 +566,7 @@ export function WebApp() {
       return;
     }
     setBasket(plan.lines.map((item) => ({...item})));
-    setToast('Canasta restaurada desde el historial');
+    setToast('Compra restaurada desde el historial');
     setView('plan');
   };
 
@@ -509,6 +597,166 @@ export function WebApp() {
     setToast(`Estado actualizado: ${PLAN_STATUS_LABELS[status]}`);
   };
 
+  // ---- Listas guardadas (§4.6) ----
+  const saveCurrentAsList = (name: string) => {
+    if (!basket.length) {
+      setToast('No hay productos para guardar como lista');
+      return;
+    }
+    const now = new Date().toISOString();
+    const list: SavedList = {
+      id: String(Date.now()),
+      name: name.trim() || 'Lista sin nombre',
+      items: basket.map((item) => ({...item})),
+      createdAt: now,
+      updatedAt: now,
+    };
+    setSavedLists((current) => [list, ...current]);
+    setSavingList(false);
+    setToast(`Lista "${list.name}" guardada`);
+  };
+
+  const repeatList = (list: SavedList) => {
+    if (!list.items.length) {
+      setToast('Esa lista no tiene productos');
+      return;
+    }
+    setBasket(list.items.map((item) => ({...item})));
+    setSavedLists((current) => current.map((l) =>
+      l.id === list.id ? {...l, lastUsedAt: new Date().toISOString()} : l,
+    ));
+    setToast(`Lista "${list.name}" cargada como compra pendiente`);
+    setView('plan');
+  };
+
+  const compareList = (list: SavedList) => {
+    if (!list.items.length) {
+      setToast('Esa lista no tiene productos');
+      return;
+    }
+    const lines = list.items.map((item) => ({...item}));
+    setBasket(lines);
+    setSavedLists((current) => current.map((l) =>
+      l.id === list.id ? {...l, lastUsedAt: new Date().toISOString()} : l,
+    ));
+    compareItems(lines);
+  };
+
+  const renameList = (id: string, name: string) => {
+    setSavedLists((current) => current.map((l) =>
+      l.id === id ? {...l, name: name.trim() || l.name, updatedAt: new Date().toISOString()} : l,
+    ));
+    setToast('Lista actualizada');
+  };
+
+  const deleteList = (id: string) => {
+    setSavedLists((current) => current.filter((l) => l.id !== id));
+    setToast('Lista eliminada');
+  };
+
+  const savePlanAsList = (plan: SavedPlan) => {
+    if (!plan.lines?.length) {
+      setToast('Ese plan no tiene líneas guardadas');
+      return;
+    }
+    const now = new Date().toISOString();
+    setSavedLists((current) => [{
+      id: String(Date.now()),
+      name: `Compra ${plan.store} · ${plan.date}`,
+      items: plan.lines!.map((item) => ({...item})),
+      createdAt: now,
+      updatedAt: now,
+    }, ...current]);
+    setToast('Lista creada desde el plan');
+  };
+
+  // ---- Almacén del hogar (§4.7) ----
+  const addItemsToPantry = (items: ConfirmedPurchaseItem[]) => {
+    const now = new Date().toISOString();
+    setPantry((current) => {
+      const next = [...current];
+      items.forEach((it) => {
+        const idx = next.findIndex((p) => p.productName.toLowerCase() === it.productName.toLowerCase());
+        if (idx >= 0) {
+          next[idx] = {...next[idx], quantity: next[idx].quantity + it.quantity, updatedAt: now};
+        } else {
+          next.unshift({
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            productName: it.productName,
+            category: it.category ?? null,
+            quantity: it.quantity,
+            source: 'confirmed_purchase',
+            addedAt: now,
+            updatedAt: now,
+          });
+        }
+      });
+      return next;
+    });
+  };
+
+  const addPantryItem = (data: {productName: string; category?: string | null; quantity: number; unit?: string | null; notes?: string}) => {
+    const now = new Date().toISOString();
+    setPantry((current) => [{
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      productName: data.productName.trim(),
+      category: data.category ?? null,
+      quantity: data.quantity,
+      unit: data.unit ?? null,
+      source: 'manual',
+      addedAt: now,
+      updatedAt: now,
+      notes: data.notes,
+    }, ...current]);
+    setToast(`${data.productName.trim()} agregado al almacén`);
+  };
+
+  const updatePantryQuantity = (id: string, quantity: number) => {
+    if (quantity <= 0) {
+      setPantry((current) => current.filter((p) => p.id !== id));
+      return;
+    }
+    setPantry((current) => current.map((p) =>
+      p.id === id ? {...p, quantity, updatedAt: new Date().toISOString()} : p,
+    ));
+  };
+
+  const consumePantryItem = (id: string) => {
+    setPantry((current) => current.filter((p) => p.id !== id));
+    setToast('Producto marcado como consumido');
+  };
+
+  // ---- Compra confirmada (§4.5) ----
+  const confirmPurchase = (
+    plan: SavedPlan,
+    data: {realTotal: number; purchaseDate: string; items: ConfirmedPurchaseItem[]; addToPantry: boolean},
+  ) => {
+    const estimatedTotal = plan.total;
+    const estimatedSavings = plan.savings ?? 0;
+    // Ahorro confirmado: ahorro estimado del plan ajustado por la diferencia entre
+    // lo estimado y lo realmente pagado (pagar menos de lo estimado suma ahorro).
+    const confirmedSavings = estimatedSavings + (estimatedTotal - data.realTotal);
+    const purchase: ConfirmedPurchase = {
+      id: String(Date.now()),
+      planId: plan.id,
+      store: plan.store,
+      purchaseDate: data.purchaseDate,
+      estimatedTotal,
+      realTotal: data.realTotal,
+      estimatedSavings,
+      confirmedSavings,
+      items: data.items,
+      createdAt: new Date().toISOString(),
+    };
+    setConfirmed((current) => [purchase, ...current]);
+    setHistory((current) => current.map((p) => (p.id === plan.id ? {...p, status: 'purchased'} : p)));
+    if (data.addToPantry) {
+      addItemsToPantry(data.items);
+    }
+    setConfirmingPlan(null);
+    setToast('Compra confirmada y registrada');
+  };
+
   const logout = () => {
     localStorage.removeItem(AUTH_KEY);
     setAuthed(false);
@@ -516,10 +764,14 @@ export function WebApp() {
   };
 
   if (!authed) {
-    return <LoginScreen onLogin={() => {
+    const enter = () => {
       localStorage.setItem(AUTH_KEY, 'true');
       setAuthed(true);
-    }} />;
+    };
+    if (showLogin) {
+      return <LoginScreen onLogin={enter} onBack={() => setShowLogin(false)} />;
+    }
+    return <LandingScreen onDemo={enter} onLogin={() => setShowLogin(true)} />;
   }
 
   return (
@@ -536,6 +788,12 @@ export function WebApp() {
           basket={basket}
           topDeals={topDeals}
           dealsError={dealsError}
+          history={history}
+          confirmed={confirmed}
+          savedLists={savedLists}
+          pantry={pantry}
+          budget={budget}
+          onBudgetChange={setBudget}
           onNavigate={setView}
           onAdd={addToBasket}
           onCompare={compareBasket}
@@ -551,10 +809,21 @@ export function WebApp() {
           onSwitchToGeneric={switchToGeneric}
           onClear={clearBasket}
           onCompare={compareBasket}
+          onSaveList={() => setSavingList(true)}
           comparing={comparing}
         />
       )}
       {view === 'prices' && <PriceExplorer onAdd={addToBasket} />}
+      {view === 'lists' && (
+        <ListsView
+          lists={savedLists}
+          onRepeat={repeatList}
+          onCompare={compareList}
+          onRename={renameList}
+          onDelete={deleteList}
+          onNavigate={setView}
+        />
+      )}
       {view === 'comparison' && (
         <ComparisonView
           comparison={comparison}
@@ -571,6 +840,17 @@ export function WebApp() {
           onDelete={deletePlan}
           onClear={clearHistory}
           onStatusChange={updatePlanStatus}
+          onConfirm={(plan) => setConfirmingPlan(plan)}
+          onSaveAsList={savePlanAsList}
+        />
+      )}
+      {view === 'pantry' && (
+        <PantryView
+          pantry={pantry}
+          onAdd={addPantryItem}
+          onQuantity={updatePantryQuantity}
+          onConsume={consumePantryItem}
+          onNavigate={setView}
         />
       )}
       {view === 'profile' && (
@@ -579,11 +859,243 @@ export function WebApp() {
           onAccountChange={setAccount}
         />
       )}
+      {confirmingPlan && (
+        <ConfirmPurchaseModal
+          plan={confirmingPlan}
+          onClose={() => setConfirmingPlan(null)}
+          onConfirm={confirmPurchase}
+        />
+      )}
+      {savingList && (
+        <SaveListModal
+          count={basket.length}
+          onClose={() => setSavingList(false)}
+          onSave={saveCurrentAsList}
+        />
+      )}
     </WebShell>
   );
 }
 
-function LoginScreen({onLogin}: {onLogin: () => void}) {
+// Supermercados realmente integrados al snapshot. NO incluir Tottus ni Líder
+// como cubiertos (plan §6.3): aún no están en el mart.
+const COVERED_STORES = ['Jumbo', 'Santa Isabel', 'Unimarc', 'El Trébol'];
+const COMING_SOON_STORES = ['Tottus', 'Líder'];
+
+function LandingScreen({onDemo, onLogin}: {onDemo: () => void; onLogin: () => void}) {
+  const [deals, setDeals] = useState<SearchItem[]>([]);
+
+  useEffect(() => {
+    api<{items: SearchItem[]}>('/api/deals/top?limit=8')
+      .then((data) => setDeals(data.items))
+      .catch(() => setDeals([]));
+  }, []);
+
+  return (
+    <div className="cw-landing">
+      <header className="cw-landing-nav">
+        <div className="cw-brand">
+          <div className="cw-logo">C</div>
+          <strong>Cartwise</strong>
+        </div>
+        <div className="cw-landing-nav-actions">
+          <button type="button" className="cw-ghost-btn" onClick={onLogin}>Iniciar sesión</button>
+          <button type="button" className="cw-primary-btn" onClick={onDemo}>Probar como demo</button>
+        </div>
+      </header>
+
+      <main id="cw-main">
+        <section className="cw-hero-public">
+          <div className="cw-hero-public-copy">
+            <span className="cw-kicker">Compara y ahorra</span>
+            <h1>Ahorra tiempo y dinero en cada compra</h1>
+            <p>
+              Cartwise compara el precio de tu compra de comida y bebida entre los
+              supermercados chilenos integrados, para que sepas dónde te conviene comprar.
+            </p>
+            <div className="cw-hero-public-actions">
+              <button type="button" className="cw-primary-btn" onClick={onDemo}>
+                Probar como demo <ArrowRight size={18} aria-hidden="true" />
+              </button>
+              <button type="button" className="cw-ghost-btn" onClick={onLogin}>Iniciar sesión</button>
+            </div>
+            <p className="cw-disclaimer-text">{TRANSPARENCY_SNAPSHOT}</p>
+          </div>
+        </section>
+
+        <CoveredStoresSection />
+
+        <OpportunitiesCarousel deals={deals} onDemo={onDemo} />
+
+        <HowItWorksSection />
+      </main>
+
+      <footer className="cw-landing-foot">
+        <PublicDataDisclaimer />
+        <button type="button" className="cw-primary-btn" onClick={onDemo}>Entrar como demo</button>
+      </footer>
+    </div>
+  );
+}
+
+function CoveredStoresSection() {
+  return (
+    <section className="cw-landing-section" aria-labelledby="cw-covered-title">
+      <h2 id="cw-covered-title">Supermercados actualmente comparados</h2>
+      <p className="cw-section-lead">
+        Comparamos productos de comida y bebida en supermercados integrados al último snapshot disponible.
+      </p>
+      <ul className="cw-store-logos" role="list">
+        {COVERED_STORES.map((store) => (
+          <li key={store} className="cw-store-logo">
+            <Store size={22} aria-hidden="true" />
+            <span>{store}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="cw-coming-soon">Próximamente: {COMING_SOON_STORES.join(' · ')}</p>
+    </section>
+  );
+}
+
+function OpportunitiesCarousel({deals, onDemo}: {deals: SearchItem[]; onDemo: () => void}) {
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const count = deals.length;
+
+  useEffect(() => {
+    if (paused || count <= 1) return;
+    const timer = setInterval(() => setIndex((i) => (i + 1) % count), 6000);
+    return () => clearInterval(timer);
+  }, [paused, count]);
+
+  useEffect(() => {
+    if (index >= count && count > 0) setIndex(0);
+  }, [count, index]);
+
+  if (!count) {
+    return (
+      <section className="cw-landing-section" aria-labelledby="cw-opp-title">
+        <h2 id="cw-opp-title">Oportunidades destacadas</h2>
+        <EmptyState text="Aún no hay diferencias destacadas para mostrar." />
+      </section>
+    );
+  }
+
+  const go = (next: number) => setIndex(((next % count) + count) % count);
+
+  return (
+    <section
+      className="cw-landing-section"
+      aria-labelledby="cw-opp-title"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
+    >
+      <h2 id="cw-opp-title">Oportunidades destacadas</h2>
+      <p className="cw-section-lead">
+        Diferencias de precio relevantes entre tiendas para un mismo producto. No son
+        necesariamente promociones.
+      </p>
+      <div className="cw-carousel" aria-roledescription="carrusel" aria-live="polite">
+        <button
+          type="button"
+          className="cw-carousel-arrow"
+          onClick={() => go(index - 1)}
+          aria-label="Oportunidad anterior"
+        >
+          <ChevronLeft size={20} aria-hidden="true" />
+        </button>
+        <OpportunityCard deal={deals[index]} onDemo={onDemo} position={index + 1} total={count} />
+        <button
+          type="button"
+          className="cw-carousel-arrow"
+          onClick={() => go(index + 1)}
+          aria-label="Siguiente oportunidad"
+        >
+          <ChevronRight size={20} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="cw-carousel-dots" role="tablist" aria-label="Seleccionar oportunidad">
+        {deals.map((deal, i) => (
+          <button
+            key={deal.id}
+            type="button"
+            role="tab"
+            aria-selected={i === index}
+            aria-label={`Oportunidad ${i + 1} de ${count}`}
+            className={i === index ? 'active' : ''}
+            onClick={() => setIndex(i)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function OpportunityCard({deal, onDemo, position, total}: {deal: SearchItem; onDemo: () => void; position: number; total: number}) {
+  const diff = deal.diferencia ?? null;
+  const pct = diff && deal.precio_max ? Math.round((diff / deal.precio_max) * 100) : null;
+  return (
+    <article className="cw-opp-card" aria-label={`Oportunidad ${position} de ${total}`}>
+      <span className="cw-badge-diff"><TrendingUp size={13} aria-hidden="true" /> Diferencia destacada</span>
+      <h3>{deal.nombre}</h3>
+      {deal.categoria && <p className="cw-opp-cat">{deal.categoria}</p>}
+      <dl className="cw-opp-prices">
+        <div>
+          <dt>Más barato{deal.precio_min_store_label ? `: ${deal.precio_min_store_label}` : ''}</dt>
+          <dd className="cw-opp-low">{money(deal.precio_min)}</dd>
+        </div>
+        {diff != null && (
+          <div>
+            <dt>Diferencia entre tiendas</dt>
+            <dd>{money(diff)}{pct != null ? ` · ${pct}%` : ''}</dd>
+          </div>
+        )}
+      </dl>
+      <div className="cw-opp-meta">
+        <span className="cw-badge exact">{deal.match_label || 'Exacto por EAN'}</span>
+        {deal.n_tiendas ? <span className="cw-muted">{plural(deal.n_tiendas, 'tienda')}</span> : null}
+      </div>
+      <p className="cw-disclaimer-text">Datos del último snapshot ({SNAPSHOT_FECHA}).</p>
+      <button type="button" className="cw-small-btn" onClick={onDemo}>Agregar a una compra</button>
+    </article>
+  );
+}
+
+function HowItWorksSection() {
+  const steps = [
+    {n: 1, title: 'Busca productos', desc: 'Encuentra alimentos y bebidas disponibles en supermercados cubiertos.', icon: <Search size={22} aria-hidden="true" />},
+    {n: 2, title: 'Compara tu compra', desc: 'Cartwise calcula el total estimado por supermercado.', icon: <ShoppingBasket size={22} aria-hidden="true" />},
+    {n: 3, title: 'Compra mejor', desc: 'Recibe una recomendación clara según precio y cobertura.', icon: <CheckCircle2 size={22} aria-hidden="true" />},
+  ];
+  return (
+    <section className="cw-landing-section" aria-labelledby="cw-how-title">
+      <h2 id="cw-how-title">Cómo funciona en 3 pasos</h2>
+      <ol className="cw-how-steps" role="list">
+        {steps.map((step) => (
+          <li key={step.n} className="cw-how-step">
+            <span className="cw-how-icon">{step.icon}</span>
+            <strong>{step.n}. {step.title}</strong>
+            <p>{step.desc}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function PublicDataDisclaimer() {
+  return (
+    <div className="cw-public-disclaimer">
+      <Tag size={16} aria-hidden="true" />
+      <p>{TRANSPARENCY_SNAPSHOT} La disponibilidad puede cambiar en tienda.</p>
+    </div>
+  );
+}
+
+function LoginScreen({onLogin, onBack}: {onLogin: () => void; onBack?: () => void}) {
   const [email, setEmail] = useState(AUTH_EMAIL);
   const [password, setPassword] = useState(AUTH_PASS);
   const [showPassword, setShowPassword] = useState(false);
@@ -603,8 +1115,13 @@ function LoginScreen({onLogin}: {onLogin: () => void}) {
     <main className="cw-login">
       <div className="cw-login-card">
         <section className="cw-login-form-side">
+          {onBack && (
+            <button type="button" className="cw-link-btn cw-login-back" onClick={onBack}>
+              <ChevronLeft size={16} aria-hidden="true" /> Volver al inicio
+            </button>
+          )}
           <h1>Bienvenido de vuelta</h1>
-          <p>Inicia sesión para armar tu canasta y comparar precios.</p>
+          <p>Inicia sesión para preparar tu compra y comparar precios.</p>
           <form onSubmit={submit} className="cw-login-form">
             <label htmlFor="cw-login-email">
               Correo
@@ -654,7 +1171,7 @@ function LoginScreen({onLogin}: {onLogin: () => void}) {
           <h2>Encuentra dónde conviene comprar, en 3 pasos</h2>
           <ol className="cw-login-steps">
             <li className="cw-step"><span>1</span> Busca los productos que necesitas</li>
-            <li className="cw-step"><span>2</span> Ajusta las cantidades de tu canasta</li>
+            <li className="cw-step"><span>2</span> Ajusta las cantidades de tu compra</li>
             <li className="cw-step"><span>3</span> Compara las 4 tiendas y ahorra</li>
           </ol>
         </aside>
@@ -701,7 +1218,7 @@ function WebShell({
       {item.icon}
       {withLabelTag ? <span>{item.label}</span> : item.label}
       {item.id === 'plan' && basketCount > 0 && (
-        <span className="cw-nav-count" aria-label={`${basketCount} unidades en la canasta`}>
+        <span className="cw-nav-count" aria-label={`${basketCount} unidades en tu compra pendiente`}>
           {basketCount}
         </span>
       )}
@@ -763,6 +1280,12 @@ function Dashboard({
   basket,
   topDeals,
   dealsError,
+  history,
+  confirmed,
+  savedLists,
+  pantry,
+  budget,
+  onBudgetChange,
   onNavigate,
   onAdd,
   onCompare,
@@ -773,72 +1296,166 @@ function Dashboard({
   basket: BasketItem[];
   topDeals: SearchItem[];
   dealsError: boolean;
+  history: SavedPlan[];
+  confirmed: ConfirmedPurchase[];
+  savedLists: SavedList[];
+  pantry: PantryItem[];
+  budget: number;
+  onBudgetChange: (value: number) => void;
   onNavigate: (view: View) => void;
   onAdd: (item: SearchItem) => void;
   onCompare: () => void;
   comparing: boolean;
 }) {
-  const metric = (value?: number) =>
-    healthError ? '—' : value?.toLocaleString('es-CL') ?? '...';
+  const month = monthKey();
+  const monthConfirmed = confirmed.filter((c) => monthKey(c.purchaseDate) === month);
+  const gastoMes = monthConfirmed.reduce((s, c) => s + (c.realTotal || 0), 0);
+  const ahorroConfirmado = monthConfirmed.reduce((s, c) => s + (c.confirmedSavings || 0), 0);
+  const monthPlans = history.filter((p) => monthKey(p.createdAt) === month);
+  const ahorroEstimado = monthPlans.reduce((s, p) => s + (p.savings || 0), 0);
+  const presupuestoRestante = budget > 0 ? budget - gastoMes : null;
+  const pendingPlan = history.find((p) => p.status === 'pending');
   const basketUnits = basket.reduce((sum, item) => sum + item.quantity, 0);
+  const recentPurchases = [...confirmed]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 4);
+
+  const metricNum = (value?: number) =>
+    healthError ? '—' : value?.toLocaleString('es-CL') ?? '...';
+
+  // Alertas simples (reglas, no IA).
+  const alertas: string[] = [];
+  if (budget > 0) {
+    const pct = Math.round((gastoMes / budget) * 100);
+    alertas.push(`Gastaste ${pct}% de tu presupuesto mensual. Te quedan ${money(budget - gastoMes)} para el mes.`);
+  }
+  if (pendingPlan) {
+    alertas.push(`Tienes un plan pendiente en ${pendingPlan.store}. Ahorro estimado: ${money(pendingPlan.savings)}.`);
+  }
+  if (basket.length > 0) {
+    alertas.push(`Tienes una compra pendiente con ${plural(basket.length, 'producto')} sin comparar.`);
+  }
+
   return (
     <div className="cw-stack">
       <header className="cw-welcome">
         <div>
-          <h1>¡Hola! Bienvenido de vuelta 👋</h1>
-          <p>Listo para encontrar dónde conviene comprar hoy.</p>
+          <h1>Tu mes en Cartwise 👋</h1>
+          <p>Revisa tu gasto en comida, tus compras y dónde conviene comprar.</p>
         </div>
         <button type="button" className="cw-primary-btn" onClick={() => onNavigate('plan')}>
           <ShoppingBasket size={18} aria-hidden="true" />
-          Armar canasta
+          Armar compra
         </button>
       </header>
-      {basket.length > 0 && (
-        <section className="cw-panel cw-basket-promo" aria-label="Tu canasta">
-          <div className="cw-panel-headrow">
-            <PanelHeader
-              title="Tu canasta"
-              subtitle={`${plural(basket.length, 'producto')} · ${plural(basketUnits, 'unidad', 'unidades')} · lista para comparar`}
-            />
-            <button type="button" className="cw-primary-btn" onClick={onCompare} disabled={comparing}>
-              {comparing ? 'Comparando...' : 'Comparar ahora'}
-            </button>
-          </div>
+
+      {/* Resumen mensual */}
+      <section className="cw-metrics" aria-label="Resumen mensual">
+        <MetricCard label="Gasto registrado del mes" value={money(gastoMes)} />
+        <MetricCard
+          label="Presupuesto restante"
+          value={presupuestoRestante == null ? 'Sin presupuesto' : money(presupuestoRestante)}
+        />
+        <MetricCard label="Ahorro estimado" value={money(ahorroEstimado)} />
+        <MetricCard label="Ahorro confirmado" value={money(ahorroConfirmado)} />
+        <MetricCard label="Compras del mes" value={String(monthConfirmed.length)} />
+        <MetricCard label="Último snapshot" value={SNAPSHOT_FECHA} />
+      </section>
+
+      <BudgetCard budget={budget} gastoMes={gastoMes} onBudgetChange={onBudgetChange} />
+
+      {/* Gráficos (máx. 2) */}
+      <section className="cw-grid-2" aria-label="Estadísticas del mes">
+        <MonthlySpendingChart purchases={monthConfirmed} budget={budget} />
+        <CategorySpendingChart purchases={monthConfirmed} />
+      </section>
+
+      {/* Compra pendiente / plan pendiente */}
+      <section className="cw-grid-2">
+        <div className="cw-panel">
+          <PanelHeader title="Compra pendiente" subtitle="Lo que estás preparando ahora" />
+          {basket.length > 0 ? (
+            <>
+              <div className="cw-mini-list">
+                {basket.slice(0, 5).map((item) => (
+                  <div key={`${item.kind}-${item.id}`}>
+                    <span>{item.nombre}</span>
+                    <strong>x{item.quantity}</strong>
+                  </div>
+                ))}
+              </div>
+              <p className="cw-muted">{plural(basket.length, 'producto')} · {plural(basketUnits, 'unidad', 'unidades')}</p>
+              <div className="cw-panel-actions">
+                <button type="button" className="cw-ghost-btn" onClick={() => onNavigate('plan')}>Continuar</button>
+                <button type="button" className="cw-primary-btn" onClick={onCompare} disabled={comparing}>
+                  {comparing ? 'Comparando…' : 'Comparar supermercados'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <EmptyState text="No tienes una compra pendiente. Crea una compra nueva o repite una lista guardada." />
+              <div className="cw-panel-actions">
+                <button type="button" className="cw-primary-btn" onClick={() => onNavigate('plan')}>Crear compra</button>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="cw-panel">
+          <PanelHeader title="Plan pendiente" subtitle="Recomendación aún no confirmada" />
+          {pendingPlan ? (
+            <>
+              <p className="cw-plan-rec">Recomendación: <strong>{pendingPlan.store}</strong></p>
+              <p className="cw-muted">Ahorro estimado: {money(pendingPlan.savings)} · {pendingPlan.date}</p>
+              <div className="cw-panel-actions">
+                <button type="button" className="cw-ghost-btn" onClick={() => onNavigate('history')}>Ver en historial</button>
+              </div>
+            </>
+          ) : (
+            <EmptyState text="No tienes planes pendientes. Compara una compra para generar uno." />
+          )}
+        </div>
+      </section>
+
+      {/* Historial reciente */}
+      <div className="cw-panel">
+        <div className="cw-panel-headrow">
+          <PanelHeader title="Historial reciente" subtitle="Tus últimas compras y planes" />
+          <button type="button" className="cw-link-btn" onClick={() => onNavigate('history')}>Ver historial</button>
+        </div>
+        {recentPurchases.length ? (
           <div className="cw-mini-list">
-            {basket.slice(0, 5).map((item) => (
-              <div key={`${item.kind}-${item.id}`}>
-                <span>{item.nombre}</span>
-                <strong>x{item.quantity}</strong>
+            {recentPurchases.map((c) => (
+              <div key={c.id}>
+                <span>{c.store} · {new Date(c.purchaseDate).toLocaleDateString('es-CL')}</span>
+                <strong>{money(c.realTotal)}</strong>
               </div>
             ))}
-            {basket.length > 5 && (
-              <button className="cw-link-btn" type="button" onClick={() => onNavigate('plan')}>
-                +{basket.length - 5} más · ver canasta
-              </button>
-            )}
           </div>
-        </section>
-      )}
-      <section className="cw-metrics">
-        <MetricCard label="Supermercados conectados" value={metric(health?.counts.stores)} />
-        <MetricCard label="Productos en catálogo" value={metric(health?.counts.products)} />
-        <MetricCard label="Precios cargados" value={metric(health?.counts.offers)} />
-        <MetricCard label="Productos comparables" value={metric(health?.counts.exactComparable)} />
-      </section>
-      <section className={basket.length > 0 ? 'cw-grid-1' : 'cw-grid-2'}>
-        {basket.length === 0 && (
-          <div className="cw-panel">
-            <PanelHeader title="Canasta activa" subtitle="0 productos seleccionados" />
-            <EmptyState text="Agrega productos desde el buscador para empezar." />
+        ) : history.length ? (
+          <div className="cw-mini-list">
+            {history.slice(0, 4).map((p) => (
+              <div key={p.id}>
+                <span>{p.store} · {p.date} · {PLAN_STATUS_LABELS[p.status ?? 'pending']}</span>
+                <strong>{money(p.total)}</strong>
+              </div>
+            ))}
           </div>
+        ) : (
+          <EmptyState text="Aún no registras compras. Cuando confirmes una compra aparecerá aquí." />
         )}
+      </div>
+
+      {/* Diferencias destacadas + Ofertas temporales */}
+      <section className="cw-grid-2">
         <div className="cw-panel">
-          <PanelHeader title="Diferencias destacadas" subtitle="Productos con mayor diferencia de precio entre tiendas" />
+          <PanelHeader title="Diferencias destacadas" subtitle="Mayor brecha de precio entre tiendas (no son ofertas)" />
           {dealsError ? (
             <EmptyState text="No pudimos cargar las diferencias por ahora. Inténtalo de nuevo." />
           ) : topDeals.length ? (
             <div className="cw-result-list compact" role="list">
-              {topDeals.map((item) => (
+              {topDeals.slice(0, 5).map((item) => (
                 <React.Fragment key={item.id}>
                   <SearchResultCard item={item} onAdd={onAdd} compact />
                 </React.Fragment>
@@ -848,7 +1465,170 @@ function Dashboard({
             <EmptyState text="Sin diferencias destacadas para mostrar todavía." />
           )}
         </div>
+        <div className="cw-panel">
+          <PanelHeader title="Ofertas temporales" subtitle="Promociones marcadas en los datos" />
+          <EmptyState text="El snapshot actual no incluye marcas de oferta promocional. Mostramos solo diferencias de precio entre tiendas." />
+          <p className="cw-disclaimer-text">Oferta detectada en el último snapshot. Disponibilidad sujeta a cambios.</p>
+        </div>
       </section>
+
+      {/* Listas guardadas + Almacén (preview) */}
+      <section className="cw-grid-2">
+        <div className="cw-panel">
+          <PanelHeader title="Listas guardadas" subtitle="Compras frecuentes para repetir" />
+          {savedLists.length ? (
+            <div className="cw-mini-list">
+              {savedLists.slice(0, 4).map((list) => (
+                <div key={list.id}>
+                  <span>{list.name}</span>
+                  <strong>{plural(list.items.length, 'producto')}</strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="Aún no tienes listas guardadas. Guarda una compra frecuente para repetirla rápido." />
+          )}
+        </div>
+        <div className="cw-panel">
+          <PanelHeader title="Almacén del hogar" subtitle="Productos que ya tienes en casa" />
+          {pantry.length ? (
+            <p className="cw-muted">{plural(pantry.length, 'producto')} registrado{pantry.length === 1 ? '' : 's'} en tu almacén.</p>
+          ) : (
+            <EmptyState text="Tu almacén está vacío. Agrega productos que ya tienes para evitar recomprarlos." />
+          )}
+        </div>
+      </section>
+
+      {/* Alertas inteligentes */}
+      {alertas.length > 0 && (
+        <div className="cw-panel">
+          <PanelHeader title="Alertas" subtitle="Recordatorios según tu actividad" />
+          <ul className="cw-alert-list" role="list">
+            {alertas.map((text, i) => (
+              <li key={i}>{text}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Estado de datos */}
+      <div className="cw-panel">
+        <PanelHeader title="Estado de los datos" subtitle="Transparencia del snapshot" />
+        <section className="cw-metrics">
+          <MetricCard label="Supermercados cubiertos" value={metricNum(health?.counts.stores)} />
+          <MetricCard label="Productos comparables" value={metricNum(health?.counts.products)} />
+          <MetricCard label="Coincidencias por EAN" value={metricNum(health?.counts.exactComparable)} />
+          <MetricCard label="Comparables genéricos" value={metricNum(health?.counts.genericComparable)} />
+        </section>
+        <p className="cw-disclaimer-text">{TRANSPARENCY_SNAPSHOT}</p>
+      </div>
+    </div>
+  );
+}
+
+function BudgetCard({budget, gastoMes, onBudgetChange}: {budget: number; gastoMes: number; onBudgetChange: (value: number) => void}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(budget || ''));
+  const pct = budget > 0 ? Math.min(100, Math.round((gastoMes / budget) * 100)) : 0;
+  const save = () => {
+    const value = Math.max(0, Math.round(Number(draft) || 0));
+    onBudgetChange(value);
+    setEditing(false);
+  };
+  return (
+    <div className="cw-panel cw-budget-card">
+      <div className="cw-panel-headrow">
+        <PanelHeader title="Presupuesto mensual de comida" subtitle={`Mes: ${currentMonthLabel()}`} />
+        <button type="button" className="cw-link-btn" onClick={() => { setDraft(String(budget || '')); setEditing((v) => !v); }}>
+          {editing ? 'Cancelar' : budget > 0 ? 'Editar' : 'Definir'}
+        </button>
+      </div>
+      {editing ? (
+        <div className="cw-budget-edit">
+          <label htmlFor="cw-budget-input">Presupuesto en CLP</label>
+          <input
+            id="cw-budget-input"
+            type="number"
+            min={0}
+            step={1000}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button type="button" className="cw-primary-btn" onClick={save}>Guardar</button>
+        </div>
+      ) : budget > 0 ? (
+        <>
+          <p className="cw-budget-figure">{money(gastoMes)} <span>/ {money(budget)}</span></p>
+          <div className="cw-budget-bar" role="img" aria-label={`Has gastado ${pct}% de tu presupuesto`}>
+            <span style={{width: `${pct}%`}} className={pct >= 100 ? 'over' : ''} />
+          </div>
+          <p className="cw-muted">Te quedan {money(Math.max(0, budget - gastoMes))} para este mes.</p>
+        </>
+      ) : (
+        <EmptyState text="Define un presupuesto mensual para seguir cuánto llevas gastado en comida." />
+      )}
+    </div>
+  );
+}
+
+function MonthlySpendingChart({purchases, budget}: {purchases: ConfirmedPurchase[]; budget: number}) {
+  // Agrupar por semana del mes (1-5) según día de compra.
+  const weeks = [0, 0, 0, 0, 0];
+  purchases.forEach((p) => {
+    const day = new Date(p.purchaseDate).getDate();
+    const idx = Math.min(4, Math.floor((day - 1) / 7));
+    weeks[idx] += p.realTotal || 0;
+  });
+  const max = Math.max(...weeks, budget > 0 ? budget / 4 : 0, 1);
+  const hasData = purchases.length > 0;
+  return (
+    <div className="cw-panel">
+      <PanelHeader title="Gasto del mes por semana" subtitle="Compras confirmadas" />
+      {hasData ? (
+        <div className="cw-bar-chart" role="img" aria-label="Gasto por semana del mes">
+          {weeks.map((value, i) => (
+            <div key={i} className="cw-bar-col">
+              <div className="cw-bar-track">
+                <span className="cw-bar-fill" style={{height: `${Math.round((value / max) * 100)}%`}} />
+              </div>
+              <span className="cw-bar-label">S{i + 1}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState text="Sin compras confirmadas este mes. El gráfico se llena al confirmar compras." />
+      )}
+    </div>
+  );
+}
+
+function CategorySpendingChart({purchases}: {purchases: ConfirmedPurchase[]}) {
+  const totals = new Map<string, number>();
+  purchases.forEach((p) => {
+    p.items.forEach((it) => {
+      const cat = it.category || 'Otros';
+      const amount = (it.paidPrice || 0) * (it.quantity || 1);
+      totals.set(cat, (totals.get(cat) || 0) + amount);
+    });
+  });
+  const rows = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const max = Math.max(...rows.map(([, v]) => v), 1);
+  return (
+    <div className="cw-panel">
+      <PanelHeader title="Gasto por categoría" subtitle="Distribución del mes" />
+      {rows.length ? (
+        <ul className="cw-hbar-chart" role="list">
+          {rows.map(([cat, value]) => (
+            <li key={cat}>
+              <span className="cw-hbar-label">{cat}</span>
+              <span className="cw-hbar-track"><span style={{width: `${Math.round((value / max) * 100)}%`}} /></span>
+              <span className="cw-hbar-value">{money(value)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <EmptyState text="Sin datos de categorías todavía. Aparece al confirmar compras con precios." />
+      )}
     </div>
   );
 }
@@ -861,6 +1641,7 @@ function PlanBuilder({
   onSwitchToGeneric,
   onClear,
   onCompare,
+  onSaveList,
   comparing,
 }: {
   basket: BasketItem[];
@@ -870,12 +1651,13 @@ function PlanBuilder({
   onSwitchToGeneric: (item: BasketItem) => void;
   onClear: () => void;
   onCompare: () => void;
+  onSaveList: () => void;
   comparing: boolean;
 }) {
   return (
     <div className="cw-stack">
       <Hero
-        title="Arma una canasta para comparar"
+        title="Prepara una compra para comparar"
         subtitle="Agrega los productos que quieres comparar y ajusta sus cantidades."
       />
       <section className="cw-grid-2 wide-left">
@@ -887,6 +1669,7 @@ function PlanBuilder({
           onSwitchToGeneric={onSwitchToGeneric}
           onClear={onClear}
           onCompare={onCompare}
+          onSaveList={onSaveList}
           comparing={comparing}
         />
       </section>
@@ -981,7 +1764,7 @@ function ProductSearch({
 
   return (
     <section className="cw-panel">
-      <PanelHeader title="Buscar producto" subtitle="Busca por nombre o marca y agrégalo a tu canasta." />
+      <PanelHeader title="Buscar producto" subtitle="Busca por nombre o marca y agrégalo a tu compra." />
       <form className="cw-searchbar" onSubmit={onSubmit} role="search">
         <Search size={18} aria-hidden="true" />
         <input
@@ -1175,7 +1958,7 @@ function SearchResultCard({item, onAdd, compact}: {item: SearchItem; onAdd: (ite
           type="button"
           className="cw-small-btn"
           onClick={() => onAdd(item)}
-          aria-label={`Agregar ${item.nombre} a la canasta`}
+          aria-label={`Agregar ${item.nombre} a tu compra`}
         >
           Agregar
         </button>
@@ -1191,6 +1974,7 @@ function BasketPanel({
   onSwitchToGeneric,
   onClear,
   onCompare,
+  onSaveList,
   comparing,
 }: {
   basket: BasketItem[];
@@ -1199,6 +1983,7 @@ function BasketPanel({
   onSwitchToGeneric: (item: BasketItem) => void;
   onClear: () => void;
   onCompare: () => void;
+  onSaveList: () => void;
   comparing: boolean;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
@@ -1219,9 +2004,9 @@ function BasketPanel({
   };
 
   return (
-    <section className="cw-panel sticky" ref={sectionRef} tabIndex={-1} aria-label="Canasta">
+    <section className="cw-panel sticky" ref={sectionRef} tabIndex={-1} aria-label="Compra pendiente">
       <div className="cw-panel-headrow">
-        <PanelHeader title="Canasta" subtitle={`${plural(basket.length, 'producto')} · ${plural(units, 'unidad', 'unidades')}`} />
+        <PanelHeader title="Compra pendiente" subtitle={`${plural(basket.length, 'producto')} · ${plural(units, 'unidad', 'unidades')}`} />
         {basket.length > 0 && (
           <button type="button" className="cw-ghost-btn cw-ghost-sm" onClick={onClear}>Vaciar</button>
         )}
@@ -1284,7 +2069,7 @@ function BasketPanel({
                     type="button"
                     className="cw-remove-btn"
                     onClick={() => handleRemove(item)}
-                    aria-label={`Quitar ${item.nombre} de la canasta`}
+                    aria-label={`Quitar ${item.nombre} de tu compra`}
                   >
                     Quitar
                   </button>
@@ -1304,9 +2089,12 @@ function BasketPanel({
           <button ref={compareRef} type="button" className="cw-primary-btn" onClick={onCompare} disabled={comparing}>
             {comparing ? 'Comparando...' : 'Comparar supermercados'}
           </button>
+          <button type="button" className="cw-ghost-btn cw-full-btn" onClick={onSaveList}>
+            <ListChecks size={16} aria-hidden="true" /> Guardar como lista
+          </button>
         </>
       ) : (
-        <EmptyState text="Tu canasta esta vacia." />
+        <EmptyState text="Tu compra pendiente está vacía." />
       )}
     </section>
   );
@@ -1325,7 +2113,7 @@ function ComparisonView({
     return (
       <div className="cw-panel">
         <EmptyState text="Todavia no hay una comparacion activa." />
-        <button type="button" className="cw-primary-btn" onClick={onBack}>Volver a canasta</button>
+        <button type="button" className="cw-primary-btn" onClick={onBack}>Volver a la compra</button>
       </div>
     );
   }
@@ -1343,7 +2131,7 @@ function ComparisonView({
         subtitle="El recomendado prioriza completar más productos y luego menor total."
         action={
           <div className="cw-hero-actions">
-            <button type="button" className="cw-ghost-btn" onClick={onBack}>Volver y editar canasta</button>
+            <button type="button" className="cw-ghost-btn" onClick={onBack}>Volver y editar compra</button>
             <button type="button" className="cw-primary-btn" onClick={onSave}>Guardar plan</button>
           </div>
         }
@@ -1351,7 +2139,7 @@ function ComparisonView({
       <p className="cw-sr-only" aria-live="polite">
         {recommended
           ? `Comparación lista. Tienda recomendada ${recommended.store.label}, total ${money(recommended.total)}.`
-          : 'Comparación lista. Ninguna tienda tiene precios para esta canasta.'}
+          : 'Comparación lista. Ninguna tienda tiene precios para esta compra.'}
       </p>
       {recommended && (
         <section className="cw-recommendation">
@@ -1412,7 +2200,7 @@ function ComparisonView({
                   ? 'Recomendada por mayor cobertura y menor total entre tiendas comparables.'
                   : missing.length
                     ? `${plural(missing.length, 'producto')} sin precio reduce la confianza del total.`
-                    : 'Canasta completa en esta tienda.'}
+                    : 'Compra completa en esta tienda.'}
               </p>
               {included.length > 0 && (
                 <div className="cw-lines">
@@ -1470,6 +2258,8 @@ function HistoryView({
   onDelete,
   onClear,
   onStatusChange,
+  onConfirm,
+  onSaveAsList,
 }: {
   history: SavedPlan[];
   highlightedPlanId: string | null;
@@ -1478,6 +2268,8 @@ function HistoryView({
   onDelete: (planId: string) => void;
   onClear: () => void;
   onStatusChange: (planId: string, status: PlanStatus) => void;
+  onConfirm: (plan: SavedPlan) => void;
+  onSaveAsList: (plan: SavedPlan) => void;
 }) {
   const [openPlanId, setOpenPlanId] = useState<string | null>(null);
 
@@ -1558,8 +2350,8 @@ function HistoryView({
                               className="cw-icon-btn"
                               onClick={() => onRepeat(plan)}
                               disabled={!hasLines}
-                              aria-label={`Repetir canasta de ${plan.store}`}
-                              title="Repetir canasta"
+                              aria-label={`Repetir compra de ${plan.store}`}
+                              title="Repetir compra"
                             >
                               <RotateCcw size={16} aria-hidden="true" />
                             </button>
@@ -1572,6 +2364,26 @@ function HistoryView({
                               title="Comparar de nuevo"
                             >
                               <RefreshCcw size={16} aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              className="cw-icon-btn"
+                              onClick={() => onConfirm(plan)}
+                              disabled={status === 'purchased'}
+                              aria-label={`Confirmar compra del plan de ${plan.store}`}
+                              title={status === 'purchased' ? 'Compra ya confirmada' : 'Confirmar compra'}
+                            >
+                              <CheckCircle2 size={16} aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              className="cw-icon-btn"
+                              onClick={() => onSaveAsList(plan)}
+                              disabled={!hasLines}
+                              aria-label={`Guardar como lista el plan de ${plan.store}`}
+                              title="Guardar como lista"
+                            >
+                              <ListChecks size={16} aria-hidden="true" />
                             </button>
                             <button
                               type="button"
@@ -1667,8 +2479,8 @@ function HistoryView({
                       className="cw-icon-btn"
                       onClick={() => onRepeat(plan)}
                       disabled={!hasLines}
-                      aria-label={`Repetir canasta de ${plan.store}`}
-                      title="Repetir canasta"
+                      aria-label={`Repetir compra de ${plan.store}`}
+                      title="Repetir compra"
                     >
                       <RotateCcw size={16} aria-hidden="true" />
                     </button>
@@ -1681,6 +2493,26 @@ function HistoryView({
                       title="Comparar de nuevo"
                     >
                       <RefreshCcw size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="cw-icon-btn"
+                      onClick={() => onConfirm(plan)}
+                      disabled={status === 'purchased'}
+                      aria-label={`Confirmar compra del plan de ${plan.store}`}
+                      title={status === 'purchased' ? 'Compra ya confirmada' : 'Confirmar compra'}
+                    >
+                      <CheckCircle2 size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="cw-icon-btn"
+                      onClick={() => onSaveAsList(plan)}
+                      disabled={!hasLines}
+                      aria-label={`Guardar como lista el plan de ${plan.store}`}
+                      title="Guardar como lista"
+                    >
+                      <ListChecks size={16} aria-hidden="true" />
                     </button>
                     <button
                       type="button"
@@ -1721,6 +2553,369 @@ function HistoryView({
         )}
       </section>
     </div>
+  );
+}
+
+// ============================================================
+// Listas guardadas (§4.6)
+// ============================================================
+function ListsView({
+  lists,
+  onRepeat,
+  onCompare,
+  onRename,
+  onDelete,
+  onNavigate,
+}: {
+  lists: SavedList[];
+  onRepeat: (list: SavedList) => void;
+  onCompare: (list: SavedList) => void;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
+  onNavigate: (view: View) => void;
+}) {
+  return (
+    <div className="cw-stack">
+      <Hero
+        title="Listas guardadas"
+        subtitle="Compras frecuentes que puedes repetir y volver a comparar."
+        action={
+          <button type="button" className="cw-primary-btn" onClick={() => onNavigate('plan')}>
+            <Plus size={18} aria-hidden="true" /> Nueva compra
+          </button>
+        }
+      />
+      <p className="cw-compare-note">
+        Al repetir una lista se compara de nuevo con los precios del último snapshot ({SNAPSHOT_FECHA});
+        una lista no guarda una recomendación fija.
+      </p>
+      {lists.length ? (
+        <div className="cw-cards-grid">
+          {lists.map((list) => (
+            <React.Fragment key={list.id}>
+              <SavedListCard
+                list={list}
+                onRepeat={onRepeat}
+                onCompare={onCompare}
+                onRename={onRename}
+                onDelete={onDelete}
+              />
+            </React.Fragment>
+          ))}
+        </div>
+      ) : (
+        <div className="cw-panel">
+          <EmptyState text="Aún no tienes listas guardadas. Arma una compra y usa “Guardar como lista”." />
+          <div className="cw-panel-actions">
+            <button type="button" className="cw-primary-btn" onClick={() => onNavigate('plan')}>Crear compra</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SavedListCard({
+  list,
+  onRepeat,
+  onCompare,
+  onRename,
+  onDelete,
+}: {
+  list: SavedList;
+  onRepeat: (list: SavedList) => void;
+  onCompare: (list: SavedList) => void;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(list.name);
+  const units = list.items.reduce((sum, item) => sum + item.quantity, 0);
+  const saveName = () => {
+    onRename(list.id, name);
+    setEditing(false);
+  };
+  return (
+    <article className="cw-panel cw-list-card">
+      <div className="cw-panel-headrow">
+        {editing ? (
+          <input
+            className="cw-inline-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            aria-label="Nombre de la lista"
+            autoFocus
+          />
+        ) : (
+          <h3 className="cw-list-name">{list.name}</h3>
+        )}
+        {editing ? (
+          <button type="button" className="cw-link-btn" onClick={saveName}>Guardar</button>
+        ) : (
+          <button type="button" className="cw-link-btn" onClick={() => { setName(list.name); setEditing(true); }}>Editar</button>
+        )}
+      </div>
+      <p className="cw-muted">
+        {plural(list.items.length, 'producto')} · {plural(units, 'unidad', 'unidades')}
+        {list.lastUsedAt ? ` · usada ${new Date(list.lastUsedAt).toLocaleDateString('es-CL')}` : ''}
+      </p>
+      <div className="cw-mini-list">
+        {list.items.slice(0, 4).map((item) => (
+          <div key={`${item.kind}-${item.id}`}>
+            <span>{item.nombre}</span>
+            <strong>x{item.quantity}</strong>
+          </div>
+        ))}
+        {list.items.length > 4 && <p className="cw-muted">+{list.items.length - 4} más</p>}
+      </div>
+      <div className="cw-panel-actions">
+        <button type="button" className="cw-primary-btn" onClick={() => onCompare(list)}>Comparar ahora</button>
+        <button type="button" className="cw-ghost-btn" onClick={() => onRepeat(list)}>
+          <RotateCcw size={16} aria-hidden="true" /> Repetir
+        </button>
+        <button type="button" className="cw-icon-btn danger" onClick={() => onDelete(list.id)} aria-label={`Eliminar lista ${list.name}`} title="Eliminar">
+          <Trash2 size={16} aria-hidden="true" />
+        </button>
+      </div>
+    </article>
+  );
+}
+
+// ============================================================
+// Almacén del hogar (§4.7)
+// ============================================================
+function PantryView({
+  pantry,
+  onAdd,
+  onQuantity,
+  onConsume,
+  onNavigate,
+}: {
+  pantry: PantryItem[];
+  onAdd: (data: {productName: string; category?: string | null; quantity: number; unit?: string | null; notes?: string}) => void;
+  onQuantity: (id: string, quantity: number) => void;
+  onConsume: (id: string) => void;
+  onNavigate: (view: View) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  return (
+    <div className="cw-stack">
+      <Hero
+        title="Almacén del hogar"
+        subtitle="Productos que tienes en casa. Evita comprar de nuevo algo que ya tienes."
+        action={
+          <button type="button" className="cw-primary-btn" onClick={() => setAdding(true)}>
+            <Plus size={18} aria-hidden="true" /> Agregar producto
+          </button>
+        }
+      />
+      {pantry.length ? (
+        <div className="cw-panel">
+          <PanelHeader title="Productos disponibles" subtitle={plural(pantry.length, 'producto')} />
+          <ul className="cw-pantry-list" role="list">
+            {pantry.map((item) => (
+              <li key={item.id} className="cw-pantry-row">
+                <div className="cw-pantry-info">
+                  <strong>{item.productName}</strong>
+                  <span className="cw-muted">
+                    {item.category || 'Sin categoría'}
+                    {item.source === 'confirmed_purchase' ? ' · de una compra' : ' · agregado a mano'}
+                  </span>
+                </div>
+                <div className="cw-qty" role="group" aria-label={`Cantidad de ${item.productName}`}>
+                  <button type="button" onClick={() => onQuantity(item.id, item.quantity - 1)} aria-label="Restar uno">−</button>
+                  <span>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</span>
+                  <button type="button" onClick={() => onQuantity(item.id, item.quantity + 1)} aria-label="Sumar uno">+</button>
+                </div>
+                <button type="button" className="cw-ghost-btn cw-ghost-sm" onClick={() => onConsume(item.id)}>
+                  <Check size={14} aria-hidden="true" /> Consumido
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <div className="cw-panel">
+          <EmptyState text="Tu almacén está vacío. Agrega productos que ya tienes o envíalos al confirmar una compra." />
+          <div className="cw-panel-actions">
+            <button type="button" className="cw-primary-btn" onClick={() => setAdding(true)}>Agregar producto</button>
+            <button type="button" className="cw-ghost-btn" onClick={() => onNavigate('history')}>Confirmar una compra</button>
+          </div>
+        </div>
+      )}
+      {adding && <AddPantryItemModal onClose={() => setAdding(false)} onAdd={onAdd} />}
+    </div>
+  );
+}
+
+// ============================================================
+// Modal reutilizable + modales de la fase 3
+// ============================================================
+function Modal({title, onClose, children}: {title: string; onClose: () => void; children: ReactNode}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="cw-modal-overlay" onClick={onClose}>
+      <div className="cw-modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <div className="cw-modal-head">
+          <h2>{title}</h2>
+          <button type="button" className="cw-icon-btn" onClick={onClose} aria-label="Cerrar">✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SaveListModal({count, onClose, onSave}: {count: number; onClose: () => void; onSave: (name: string) => void}) {
+  const [name, setName] = useState('');
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(name);
+  };
+  return (
+    <Modal title="Guardar como lista" onClose={onClose}>
+      <form onSubmit={submit} className="cw-modal-form">
+        <p className="cw-muted">Guarda los {plural(count, 'producto')} de tu compra pendiente como una lista reutilizable.</p>
+        <label htmlFor="cw-list-name">Nombre de la lista</label>
+        <input
+          id="cw-list-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Compra mensual, Desayuno semanal…"
+          autoFocus
+        />
+        <div className="cw-modal-actions">
+          <button type="button" className="cw-ghost-btn" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="cw-primary-btn">Guardar lista</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function AddPantryItemModal({
+  onClose,
+  onAdd,
+}: {
+  onClose: () => void;
+  onAdd: (data: {productName: string; category?: string | null; quantity: number; unit?: string | null; notes?: string}) => void;
+}) {
+  const [productName, setProductName] = useState('');
+  const [category, setCategory] = useState('');
+  const [quantity, setQuantity] = useState('1');
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productName.trim()) return;
+    onAdd({
+      productName,
+      category: category.trim() || null,
+      quantity: Math.max(1, Math.round(Number(quantity) || 1)),
+    });
+    onClose();
+  };
+  return (
+    <Modal title="Agregar al almacén" onClose={onClose}>
+      <form onSubmit={submit} className="cw-modal-form">
+        <label htmlFor="cw-pantry-name">Producto</label>
+        <input id="cw-pantry-name" value={productName} onChange={(e) => setProductName(e.target.value)} placeholder="Arroz 1 kg" autoFocus required />
+        <label htmlFor="cw-pantry-cat">Categoría (opcional)</label>
+        <input id="cw-pantry-cat" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Abarrotes" />
+        <label htmlFor="cw-pantry-qty">Cantidad</label>
+        <input id="cw-pantry-qty" type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+        <div className="cw-modal-actions">
+          <button type="button" className="cw-ghost-btn" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="cw-primary-btn">Agregar</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ConfirmPurchaseModal({
+  plan,
+  onClose,
+  onConfirm,
+}: {
+  plan: SavedPlan;
+  onClose: () => void;
+  onConfirm: (plan: SavedPlan, data: {realTotal: number; purchaseDate: string; items: ConfirmedPurchaseItem[]; addToPantry: boolean}) => void;
+}) {
+  const baseItems = plan.lines ?? [];
+  const [checked, setChecked] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(baseItems.map((l) => [`${l.kind}-${l.id}`, true])),
+  );
+  const [realTotal, setRealTotal] = useState(String(plan.total || ''));
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [addToPantry, setAddToPantry] = useState(true);
+
+  const toggle = (key: string) => setChecked((c) => ({...c, [key]: !c[key]}));
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const items: ConfirmedPurchaseItem[] = baseItems
+      .filter((l) => checked[`${l.kind}-${l.id}`])
+      .map((l) => ({
+        productName: l.nombre,
+        quantity: l.quantity,
+        category: l.categoria ?? null,
+        paidPrice: l.precio_min ?? null,
+      }));
+    onConfirm(plan, {
+      realTotal: Math.max(0, Math.round(Number(realTotal) || 0)),
+      purchaseDate: new Date(date).toISOString(),
+      items,
+      addToPantry,
+    });
+  };
+
+  return (
+    <Modal title="Confirmar compra" onClose={onClose}>
+      <form onSubmit={submit} className="cw-modal-form">
+        <p className="cw-muted">Plan recomendado en <strong>{plan.store}</strong> · total estimado {money(plan.total)}.</p>
+
+        <div className="cw-modal-grid">
+          <label htmlFor="cw-confirm-total">Total real pagado (CLP)
+            <input id="cw-confirm-total" type="number" min={0} step={100} value={realTotal} onChange={(e) => setRealTotal(e.target.value)} required />
+          </label>
+          <label htmlFor="cw-confirm-date">Fecha de compra
+            <input id="cw-confirm-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+          </label>
+        </div>
+
+        {baseItems.length > 0 ? (
+          <fieldset className="cw-confirm-items">
+            <legend>Productos comprados</legend>
+            {baseItems.map((l) => {
+              const key = `${l.kind}-${l.id}`;
+              return (
+                <label key={key} className="cw-check-row">
+                  <input type="checkbox" checked={!!checked[key]} onChange={() => toggle(key)} />
+                  <span>{l.nombre}{l.quantity > 1 ? ` ×${l.quantity}` : ''}</span>
+                </label>
+              );
+            })}
+          </fieldset>
+        ) : (
+          <p className="cw-muted">Este plan no guardó líneas de productos; se registrará solo el total.</p>
+        )}
+
+        <label className="cw-check-row">
+          <input type="checkbox" checked={addToPantry} onChange={(e) => setAddToPantry(e.target.checked)} />
+          <span>Enviar estos productos al almacén del hogar</span>
+        </label>
+
+        <div className="cw-modal-actions">
+          <button type="button" className="cw-ghost-btn" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="cw-primary-btn">Confirmar compra</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -1959,7 +3154,7 @@ function ProfileView({
           </label>
           <label className="cw-check">
             <input type="checkbox" checked={draft.priceAlerts} onChange={(e) => set('priceAlerts', e.target.checked)} />
-            Avisarme cuando baje un precio de mi canasta
+            Avisarme cuando baje un precio de mi compra
           </label>
         </div>
       );

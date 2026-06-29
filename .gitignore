@@ -4,3 +4,45 @@ Scrapper/datos/snapshots/**/raw/
 *.jsonl
 __pycache__/
 *.pyc
+
+# Datos generados por scrapers
+Scrapper/datos/raw/
+Scrapper/datos/snapshots/
+Scrapper/datos/staging/
+Scrapper/datos/comparadores/
+
+# Archivos de datos pesados
+*.jsonl
+*.sqlite
+*.db
+*.csv
+
+# Logs
+*.log
+Scrapper/datos/logs/
+
+# Caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Entornos Python
+.venv/
+venv/
+env/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+
+# Variables de entorno
+.env
+.env.local
+.env.*.local
+
+# Sistema
+.DS_Store
+Thumbs.db
