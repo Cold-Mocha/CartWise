@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { runBridge, type BridgePayload } from "./bridge";
 
-// Envoltorio común: ejecuta una operación del bridge y normaliza errores a JSON
-// con status 500, igual que la API Express original.
+// Envoltorio común para las route handlers: ejecuta una operación del bridge y
+// normaliza los errores a JSON con status 500.
 export async function bridgeJson(operation: string, payload: BridgePayload = {}) {
   try {
     const data = await runBridge(operation, payload);
