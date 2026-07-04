@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { ShoppingBasket, Minus, Plus, CheckCheck, Truck, Hand, Search, Store } from "lucide-react";
 import { useAppState } from "@/components/state/app-state";
-import { PantrySearchDialog } from "@/components/pantry/pantry-search-dialog";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
 import { StoreLogo } from "@/components/brand/store-logo";
@@ -16,9 +16,16 @@ import { normalizeText } from "@/lib/text";
 import type { PantryItem, SearchItem } from "@/types/cartwise";
 
 export default function DespensaPage() {
-  const { pantry, addProductsToPantry, updatePantryQuantity, consumePantryItem, addToBasket } =
-    useAppState();
+  const { pantry, updatePantryQuantity, consumePantryItem, addToBasket } = useAppState();
   const [search, setSearch] = useState("");
+
+  const addButton = (
+    <Button asChild>
+      <Link href="/despensa/agregar">
+        <Plus /> Agregar producto
+      </Link>
+    </Button>
+  );
 
   const visible = useMemo(() => {
     const q = normalizeText(search);
@@ -61,7 +68,7 @@ export default function DespensaPage() {
         eyebrow="Almacén del hogar"
         title="Despensa"
         description="Lleva el control de lo que ya tienes en casa."
-        action={<PantrySearchDialog onAddMany={addProductsToPantry} />}
+        action={addButton}
       />
 
       {/* Buscador interno de la despensa */}
@@ -89,7 +96,7 @@ export default function DespensaPage() {
           icon={ShoppingBasket}
           title="Tu despensa está vacía"
           description="Agrega productos que ya tienes en casa, o envíalos automáticamente al confirmar una compra."
-          action={<PantrySearchDialog onAddMany={addProductsToPantry} />}
+          action={addButton}
         />
       ) : visible.length === 0 ? (
         <EmptyState

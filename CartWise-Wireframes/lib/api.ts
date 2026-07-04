@@ -1,10 +1,10 @@
 import type {
   BasketComparison,
   BasketItem,
-  CategoryDeals,
   Health,
   ProductOffers,
   SearchItem,
+  StoreDeals,
 } from "@/types/cartwise";
 
 // Cliente de la API de Cartwise. Toda llamada HTTP a las route handlers pasa por
@@ -31,11 +31,14 @@ export async function getTopDeals(limit = 8) {
   return data.items;
 }
 
-export async function getDealsByCategory(perCategory = 10, categories = 6) {
-  const data = await request<{ groups: CategoryDeals[] }>(
-    `/api/deals/by-category?perCategory=${perCategory}&categories=${categories}`,
-  );
-  return data.groups;
+export async function getStrongDeals(limit = 400) {
+  const data = await request<{ items: SearchItem[] }>(`/api/deals/strong?limit=${limit}`);
+  return data.items;
+}
+
+export async function getStoreDeals(perStore = 12) {
+  const data = await request<{ stores: StoreDeals[] }>(`/api/deals/by-store?perStore=${perStore}`);
+  return data.stores;
 }
 
 export function getProductOffers(id: number) {

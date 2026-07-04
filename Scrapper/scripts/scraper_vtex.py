@@ -34,9 +34,9 @@ from datetime import datetime, timezone
 
 from scripts.scraper_trebol import (
     RateLimiter, make_session, fetch_json, SCHEMA, EAN_RE, DEFAULT_RATE,
-    DEFAULT_OUT_DIR,
+    DEFAULT_OUT_DIR, DEFAULT_SCOPE,
 )
-from scripts.comida import is_food_category
+from scripts.comida import is_scope_category, is_scope_product, normalize_scope
 
 # Host de cuenta VTEX por tienda (verificado en vivo).
 STORES = {
@@ -122,13 +122,27 @@ def walk(session, base, limiter, cat, seen_pids, write, done_cats, ancestors=(),
 # --------------------------------------------------------------------------- #
 # Normalización VTEX -> esquema común (1 fila por SKU/item)
 # --------------------------------------------------------------------------- #
-def normalize(product: dict) -> list[dict]:
+def _real_offer(precio, precio_lista) -> int:
+    try:
+        p = int(round(float(precio)))
+        lp = int(round(float(precio_lista)))
+    except (TypeError, ValueError):
+        return 0
+    return 1 if p > 0 and lp > p else 0
+
+
+def normalize(product: dict, scope: str = DEFAULT_SCOPE) -> list[dict]:
+    scope = normalize_scope(scope)
     rows = []
     pid = str(product.get("productId") or "")
     brand = product.get("brand")
     cats = product.get("categories") or []
     categoria = cats[0].strip("/").split("/")[-1] if cats else None
     url = product.get("link")
+    product_name = product.get("productName") or ""
+
+    if not is_scope_product(product_name, categoria or "", scope):
+        return rows
 
     for it in product.get("items", []):
         ean = (it.get("ean") or "").strip() or None
@@ -141,6 +155,8 @@ def normalize(product: dict) -> list[dict]:
             if offer.get("Price"):
                 break
         avail = offer.get("AvailableQuantity")
+        precio = _clp(offer.get("Price"))
+        precio_lista = _clp(offer.get("ListPrice"))
         rows.append({
             "sku_tienda": str(it.get("itemId") or ""),
             "product_id_tienda": pid,
@@ -155,8 +171,9 @@ def normalize(product: dict) -> list[dict]:
             "gramaje_g": None,                               # VTEX: en specs, no mapeado aún
             "cantidad": it.get("unitMultiplier"),
             "unidad": it.get("measurementUnit"),
-            "precio": _clp(offer.get("Price")),
-            "precio_lista": _clp(offer.get("ListPrice")),
+            "precio": precio,
+            "precio_lista": precio_lista,
+            "oferta_real": _real_offer(precio, precio_lista),
             "disponible": bool(avail and avail > 0),
             "stock": avail,
         })
@@ -171,7 +188,8 @@ def _clp(v):
 # --------------------------------------------------------------------------- #
 # Carga a SQLite (reutiliza esquema común de CONTEXTO)
 # --------------------------------------------------------------------------- #
-def load_sqlite(db_path, raw_path, store):
+def load_sqlite(db_path, raw_path, store, scope: str = DEFAULT_SCOPE):
+    scope = normalize_scope(scope)
     if not os.path.exists(raw_path) or os.path.getsize(raw_path) == 0:
         print(f"      (sin productos en {raw_path}; nada que cargar)")
         return 0, 0
@@ -184,6 +202,7 @@ def load_sqlite(db_path, raw_path, store):
     cur = con.cursor()
     cur.execute("INSERT OR IGNORE INTO supermercado(nombre, plataforma) VALUES (?,?)",
                 (store, STORES[store]["plataforma"]))
+    cur.execute("INSERT OR REPLACE INTO metadata(clave, valor) VALUES (?,?)", ("scope", scope))
     superm_id = cur.execute("SELECT id FROM supermercado WHERE nombre=?", (store,)).fetchone()[0]
     now = datetime.now(timezone.utc).isoformat()
     cur.execute("INSERT INTO snapshot(fecha_captura) VALUES (?)", (now,))
@@ -197,7 +216,7 @@ def load_sqlite(db_path, raw_path, store):
             except Exception:
                 continue
             n_prod += 1
-            for r in normalize(product):
+            for r in normalize(product, scope):
                 cur.execute(
                     """INSERT INTO producto
                        (snapshot_id, supermercado_id, sku_tienda, product_id_tienda,
@@ -210,9 +229,10 @@ def load_sqlite(db_path, raw_path, store):
                      str(r["cantidad"]) if r["cantidad"] is not None else None, r["unidad"]))
                 cur.execute(
                     """INSERT INTO precio
-                       (producto_id, precio, precio_lista, disponible, stock, capturado_en)
-                       VALUES (?,?,?,?,?,?)""",
-                    (cur.lastrowid, r["precio"], r["precio_lista"],
+                       (producto_id, precio, precio_lista, oferta_real,
+                        disponible, stock, capturado_en)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (cur.lastrowid, r["precio"], r["precio_lista"], r["oferta_real"],
                      1 if r["disponible"] else 0, r["stock"], now))
                 n_sku += 1
     con.commit()
@@ -260,12 +280,12 @@ def scrape(args):
         print(f"[1/3] Árbol de categorías de {store} ({base}) …", flush=True)
         tree = get_category_tree(session, base, limiter)
         roots = tree
-        if not args.all:
-            comida = [r for r in tree if is_food_category(r["name"])]
-            excluidas = [r["name"] for r in tree if not is_food_category(r["name"])]
-            print(f"      filtro COMIDA: {len(comida)}/{len(tree)} raíces. "
+        if args.scope != "all":
+            seleccionadas = [r for r in tree if is_scope_category(r["name"], args.scope)]
+            excluidas = [r["name"] for r in tree if not is_scope_category(r["name"], args.scope)]
+            print(f"      scope {args.scope}: {len(seleccionadas)}/{len(tree)} raíces. "
                   f"Excluidas: {', '.join(excluidas)}")
-            roots = comida
+            roots = seleccionadas
         roots = roots[: args.limit_cats] if args.limit_cats else roots
         print(f"      procesando {len(roots)} categorías raíz.")
 
@@ -294,7 +314,7 @@ def scrape(args):
         print(f"      {len(seen)} productos únicos en {time.time()-t0:.0f}s.")
 
     print(f"[3/3] Cargando a SQLite {db_path} …", flush=True)
-    n_prod, n_sku = load_sqlite(db_path, raw_path, store)
+    n_prod, n_sku = load_sqlite(db_path, raw_path, store, args.scope)
     print(f"      {n_prod} productos -> {n_sku} SKUs (filas).")
     _summary(db_path)
 
@@ -319,10 +339,14 @@ def main():
     ap.add_argument("--rate", type=float, default=DEFAULT_RATE)
     ap.add_argument("--limit-cats", type=int, default=0,
                     help="máx categorías raíz a procesar (0=todas; útil para pruebas)")
+    ap.add_argument("--scope", choices=("food", "grocery", "all"), default=DEFAULT_SCOPE,
+                    help="alcance a descargar/cargar: food, grocery o all")
     ap.add_argument("--all", action="store_true",
-                    help="no filtrar por comida; bajar TODO el catálogo")
+                    help="alias de --scope all")
     ap.add_argument("--load-only", action="store_true")
     args = ap.parse_args()
+    if args.all:
+        args.scope = "all"
     scrape(args)
 
 

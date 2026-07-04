@@ -69,7 +69,7 @@ type AppState = {
   // Despensa.
   pantry: PantryItem[];
   addPantryItem: (draft: PantryItemDraft) => void;
-  addProductsToPantry: (items: SearchItem[]) => void;
+  addProductsToPantry: (items: SearchItem[], quantities?: Record<string, number>) => void;
   updatePantryQuantity: (id: string, quantity: number) => void;
   consumePantryItem: (id: string) => void;
 
@@ -265,19 +265,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Agrega varios productos del catálogo a la despensa (flujo de selección
-  // múltiple, plan §6.2). Guarda el mejor precio/tienda del snapshot al momento
-  // de agregar para poder mostrarlo luego en el hover sin volver a consultar.
-  const addProductsToPantry = (items: SearchItem[]) => {
+  // múltiple en su propia página, plan §6.2). Guarda el mejor precio/tienda del
+  // snapshot al momento de agregar para mostrarlo luego sin volver a consultar.
+  // `quantities` es opcional: mapa por `${kind}-${id}` con la cantidad elegida.
+  const addProductsToPantry = (items: SearchItem[], quantities?: Record<string, number>) => {
     if (!items.length) return;
     const now = new Date().toISOString();
+    const qtyOf = (it: SearchItem) => Math.max(1, quantities?.[`${it.kind}-${it.id}`] ?? 1);
     setPantry((current) => {
       const next = [...current];
       items.forEach((it) => {
+        const qty = qtyOf(it);
         const idx = next.findIndex(
           (p) => p.productName.toLowerCase() === it.nombre.toLowerCase(),
         );
         if (idx >= 0) {
-          next[idx] = { ...next[idx], quantity: next[idx].quantity + 1, updatedAt: now };
+          next[idx] = { ...next[idx], quantity: next[idx].quantity + qty, updatedAt: now };
         } else {
           // Solo guardamos id/precio para productos exactos: el comparable
           // genérico usa otro id y rompería la compra pendiente. Sin ese dato, el
@@ -288,7 +291,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             productId: exact ? it.id : null,
             productName: it.nombre,
             category: it.categoria ?? null,
-            quantity: 1,
+            quantity: qty,
             source: "manual",
             addedAt: now,
             updatedAt: now,
@@ -455,16 +458,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       (p) => p.store === rec.store.label && p.total === rec.total && savedPlanSignature(p) === signature,
     );
     if (duplicate) {
-      toast("Ese plan ya está en el historial");
+      toast("Ese plan ya está en tus compras planificadas");
       setHighlightedPlanId(duplicate.id);
-      router.push("/historial");
+      router.push("/planificadas");
       return;
     }
     const saved = createPlanFromComparison();
     if (!saved) return;
     setHighlightedPlanId(saved.id);
-    toast.success("Plan guardado en el historial");
-    router.push("/historial");
+    toast.success("Compra planificada guardada");
+    router.push("/planificadas");
   };
 
   const repeatPlan = (plan: SavedPlan) => {
@@ -523,11 +526,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     } else {
       toast.success("Compra confirmada y registrada");
     }
-    // La compra ya se concretó: vaciamos la compra pendiente y la comparación en
-    // curso y volvemos a Inicio, donde se ve el gasto del mes actualizado
-    // (plan §10 y §2).
-    setBasketState([]);
-    setComparison(null);
+    // Solo vaciamos la compra pendiente si el plan confirmado corresponde a la
+    // compra pendiente actual (flujo comparar → resumen). Si se confirma un plan
+    // distinto desde "Compras planificadas", no tocamos una compra en curso.
+    const matchesBasket = basket.length > 0 && savedPlanSignature(plan) === planItemsSignature(basket);
+    if (matchesBasket) {
+      setBasketState([]);
+      setComparison(null);
+    }
     router.push("/dashboard");
   };
 

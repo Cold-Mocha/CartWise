@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, ShoppingBasket, TrendingDown } from "lucide-react";
+import { Plus, ExternalLink } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,26 +14,24 @@ import { StoreLogo } from "@/components/brand/store-logo";
 import { ProductImage } from "./product-image";
 import { getProductOffers } from "@/lib/api";
 import { money } from "@/lib/format";
-import { isStrongDifference, strongDifferencePct } from "@/lib/basket";
 import { cn } from "@/lib/utils";
 import type { SearchItem, StoreOffer } from "@/types/cartwise";
 
 /*
-  Detalle de producto (plan §4.7): foto, nombre, marca, categoría, precios por
-  supermercado, mejor precio y acciones (agregar a compra pendiente / despensa).
-  Los precios por tienda solo existen para productos exactos; los comparables
-  muestran su mejor precio del snapshot sin desglose por tienda.
+  Detalle de producto: foto (o ícono referencial por categoría), nombre, marca,
+  categoría, precios por supermercado con enlace a la tienda oficial, mejor
+  precio y acción de agregar a la compra pendiente. Los precios por tienda solo
+  existen para productos exactos; los comparables muestran su mejor precio del
+  snapshot sin desglose por tienda.
 */
 export function ProductDetailDialog({
   item,
   onClose,
   onAddBasket,
-  onAddPantry,
 }: {
   item: SearchItem | null;
   onClose: () => void;
   onAddBasket: (item: SearchItem) => void;
-  onAddPantry: (item: SearchItem) => void;
 }) {
   const [offers, setOffers] = React.useState<StoreOffer[] | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -55,8 +53,6 @@ export function ProductDetailDialog({
     };
   }, [item]);
 
-  const strong = item ? isStrongDifference(item) : false;
-  const pct = item ? strongDifferencePct(item) : null;
   const best = offers && offers.length ? Math.min(...offers.map((o) => o.precio ?? Infinity)) : null;
 
   return (
@@ -70,19 +66,13 @@ export function ProductDetailDialog({
 
             <div className="flex gap-4">
               <div className="size-28 shrink-0 rounded-lg border border-border bg-white p-2">
-                <ProductImage ean={item.ean} alt={item.nombre} className="h-full w-full" />
+                <ProductImage ean={item.ean} alt={item.nombre} category={item.categoria} className="h-full w-full" />
               </div>
               <div className="min-w-0 space-y-1.5">
                 {item.marca && <p className="text-sm font-semibold text-foreground">{item.marca}</p>}
                 {item.categoria && (
                   <Badge variant="muted" className="font-medium">
                     {item.categoria}
-                  </Badge>
-                )}
-                {strong && (
-                  <Badge variant="savings">
-                    <TrendingDown className="size-3" /> Diferencia destacada
-                    {pct ? ` · ${Math.round(pct * 100)}%` : ""}
                   </Badge>
                 )}
                 {item.precio_min != null && (
@@ -119,11 +109,25 @@ export function ProductDetailDialog({
                       const isBest = o.precio === best;
                       return (
                         <li key={o.store_id} className="flex items-center justify-between gap-2 px-3 py-2">
-                          <span className="flex items-center gap-2">
+                          <span className="flex min-w-0 items-center gap-2">
                             <StoreLogo name={o.store_label} size={24} />
-                            <span className="text-sm font-semibold text-foreground">{o.store_label}</span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-foreground">
+                                {o.store_label}
+                              </span>
+                              {o.url && (
+                                <a
+                                  href={o.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                                >
+                                  <ExternalLink className="size-3" /> Ver en tienda oficial
+                                </a>
+                              )}
+                            </span>
                           </span>
-                          <span className="flex items-center gap-2">
+                          <span className="flex shrink-0 items-center gap-2">
                             {isBest && <Badge variant="savings">Mejor precio</Badge>}
                             <span
                               className={cn(
@@ -139,32 +143,19 @@ export function ProductDetailDialog({
                     })}
                 </ul>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  Sin precio disponible en el último snapshot.
-                </p>
+                <p className="text-sm text-muted-foreground">Sin precio disponible.</p>
               )}
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                className="flex-1"
-                onClick={() => {
-                  onAddBasket(item);
-                  onClose();
-                }}
-              >
-                <Plus /> Agregar a compra pendiente
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  onAddPantry(item);
-                  onClose();
-                }}
-              >
-                <ShoppingBasket /> A la despensa
-              </Button>
-            </div>
+            <Button
+              className="w-full"
+              onClick={() => {
+                onAddBasket(item);
+                onClose();
+              }}
+            >
+              <Plus /> Agregar a compra pendiente
+            </Button>
           </>
         )}
       </DialogContent>

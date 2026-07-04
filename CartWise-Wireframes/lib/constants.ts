@@ -17,22 +17,9 @@ export const STORAGE_KEYS = {
 // referencia para "gasto del mes vs presupuesto" en la dashboard.
 export const DEFAULT_MONTHLY_BUDGET = 250_000;
 
-export const SUGERENCIAS = ["leche", "arroz", "aceite", "fideos", "cerveza", "café", "atún"];
-
-export const CATEGORIAS_DESTACADAS = [
-  "Lácteos",
-  "Despensa",
-  "Bebidas",
-  "Snacks",
-  "Limpieza",
-  "Carnes",
-  "Frutas y verduras",
-];
-
-// Snapshot que respalda los precios mostrados. Toda pantalla con precios debe
-// recordar al usuario que son referenciales (plan §15).
+// Fecha del snapshot que respalda los precios. Se usa internamente para
+// etiquetar planes guardados (no se muestra como aviso al usuario).
 export const SNAPSHOT_FECHA = "2026-06-24";
-export const TRANSPARENCIA = `Precios referenciales según el último snapshot disponible (${SNAPSHOT_FECHA}).`;
 
 export const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
   pending: "Pendiente",
@@ -40,7 +27,5 @@ export const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
   discarded: "Descartado",
 };
 
-// Supermercados realmente integrados al mart. NO incluir Tottus ni Líder como
-// cubiertos (plan §10): aún no están en la base.
+// Supermercados realmente integrados al mart, usados en el filtro de catálogo.
 export const COVERED_STORES = ["Jumbo", "Santa Isabel", "Unimarc", "El Trébol"];
-export const COMING_SOON_STORES = ["Tottus", "Líder"];

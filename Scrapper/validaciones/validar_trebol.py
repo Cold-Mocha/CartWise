@@ -16,6 +16,7 @@ Uso:
   cd /home/delia/Documentos/Scrapper
   python3 -m validaciones.validar_trebol
 """
+import argparse
 import os
 import sqlite3
 import sys
@@ -28,6 +29,10 @@ DB = os.path.join(OUT, "staging", "trebol.sqlite")
 
 
 def main():
+    ap = argparse.ArgumentParser(description="Validación El Trébol")
+    ap.add_argument("--scope", choices=("food", "grocery", "all"), default="food")
+    args = ap.parse_args()
+
     if not os.path.exists(RAW):
         print(f"No existe {RAW}. ¿Corriste el scraper?", file=sys.stderr)
         sys.exit(1)
@@ -37,7 +42,7 @@ def main():
     if os.path.exists(DB):
         os.remove(DB)
     print("Recargando SQLite desde el JSONL crudo …")
-    n_prod_json, n_var = load_sqlite(DB, RAW)
+    n_prod_json, n_var = load_sqlite(DB, RAW, args.scope)
     print(f"  {n_prod_json} productos (JSON) -> {n_var} variantes (filas).\n")
 
     con = sqlite3.connect(DB)

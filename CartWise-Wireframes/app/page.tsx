@@ -4,13 +4,9 @@ import { PromoMarquee } from "@/components/landing/promo-marquee";
 import { PublicHeader } from "@/components/layout/public-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { LandingCta } from "@/components/landing/landing-cta";
-import { DealsCarousel } from "@/components/landing/deals-carousel";
-import { StoreCoverage } from "@/components/store/store-coverage";
-import { StoreLogo } from "@/components/brand/store-logo";
+import { LandingDeals } from "@/components/landing/landing-deals";
 import { SectionHeading } from "@/components/common/section-heading";
-import { TransparencyNote } from "@/components/common/transparency-note";
 import { Badge } from "@/components/ui/badge";
-import { COVERED_STORES } from "@/lib/constants";
 
 const STEPS = [
   {
@@ -43,7 +39,7 @@ export default function LandingPage() {
           <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:py-20">
             <div className="space-y-6">
               <Badge variant="savings" className="px-3 py-1 text-xs">
-                <Sparkles className="size-3" /> {COVERED_STORES.length} supermercados cubiertos
+                <Sparkles className="size-3" /> Compara y ahorra
               </Badge>
               <h1 className="text-4xl font-extrabold leading-[1.05] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
                 Compara supermercados y{" "}
@@ -61,10 +57,9 @@ export default function LandingPage() {
                   Cómo funciona <ArrowRight className="size-4" />
                 </Link>
               </div>
-              <TransparencyNote />
             </div>
 
-            {/* Tarjeta hero ilustrativa: cobertura real, sin precios inventados */}
+            {/* Tarjeta hero ilustrativa: propuesta de valor, sin datos inventados */}
             <div className="relative">
               <div className="rounded-2xl border border-border bg-card p-6 shadow-xl">
                 <p className="text-xs font-bold uppercase tracking-widest text-primary">
@@ -73,26 +68,17 @@ export default function LandingPage() {
                 <p className="mt-1 text-lg font-extrabold text-foreground">
                   Un mismo producto, varios supermercados
                 </p>
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  {COVERED_STORES.map((store) => (
-                    <div
-                      key={store}
-                      className="flex items-center gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5"
-                    >
-                      <StoreLogo name={store} size={34} />
-                      <span className="text-sm font-bold text-foreground">{store}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-5 space-y-2.5 text-sm">
+                <div className="mt-5 space-y-3 text-sm">
                   {[
-                    "Vemos qué tienda cubre más de tu compra",
-                    "Detectamos diferencias de precio entre supermercados",
-                    "Te recomendamos dónde conviene comprar",
-                  ].map((line) => (
-                    <p key={line} className="flex items-start gap-2 text-muted-foreground">
-                      <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
-                      <span>{line}</span>
+                    { icon: Search, t: "Busca productos por nombre o marca" },
+                    { icon: ShoppingBasket, t: "Arma tu compra pendiente" },
+                    { icon: Scale, t: "Compara y descubre dónde conviene" },
+                  ].map(({ icon: Icon, t }) => (
+                    <p key={t} className="flex items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5">
+                      <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Icon className="size-4" />
+                      </span>
+                      <span className="font-semibold text-foreground">{t}</span>
                     </p>
                   ))}
                 </div>
@@ -101,26 +87,13 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Supermercados cubiertos */}
-        <section id="cubiertos" className="border-y border-border bg-card/60">
-          <div className="mx-auto max-w-7xl space-y-5 px-4 py-12 sm:px-6">
-            <SectionHeading
-              eyebrow="Supermercados cubiertos"
-              title="Precios reales de tiendas chilenas"
-              description="Tottus y Líder aparecen como próximamente: aún no están integrados al snapshot."
-            />
-            <StoreCoverage />
-          </div>
-        </section>
-
         {/* Diferencias destacadas */}
-        <section id="destacadas" className="mx-auto max-w-7xl space-y-5 px-4 py-14 sm:px-6">
+        <section id="destacadas" className="border-t border-border mx-auto max-w-7xl space-y-5 px-4 py-14 sm:px-6">
           <SectionHeading
-            eyebrow="Oportunidades de hoy"
-            title="Diferencias destacadas entre supermercados"
-            description="Las mayores brechas de precio para un mismo producto según el último snapshot. No son ofertas: son diferencias entre tiendas."
+            title="Diferencias destacadas"
+            description="Las mayores brechas de precio para un mismo producto. No son ofertas: son diferencias entre tiendas."
           />
-          <DealsCarousel limit={12} />
+          <LandingDeals limit={10} />
         </section>
 
         {/* Cómo funciona */}

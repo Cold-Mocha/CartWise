@@ -4,18 +4,17 @@ import { Plus, Store, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "./product-image";
-import { StorePricesPopover } from "./store-prices-popover";
 import { money } from "@/lib/format";
-import { isStrongDifference, strongDifferencePct } from "@/lib/basket";
+import { isStrongDifference } from "@/lib/basket";
 import { cn } from "@/lib/utils";
 import type { SearchItem } from "@/types/cartwise";
 
 /*
   Card comercial de producto para el catálogo, estilo supermercado online.
   Jerarquía: imagen → nombre → categoría/marca → PRECIO destacado → tienda con
-  mejor precio. El botón "Agregar" es la acción primaria; al pasar el cursor por
-  la imagen se ven los precios por supermercado (plan §4.5/§4.6). "Diferencia
-  destacada" NO es una oferta: es una brecha de precio entre tiendas >=20%.
+  mejor precio. Dos acciones: "Añadir directo" (agrega de inmediato) y "Ver
+  precios y agregar" (abre el detalle con precios por tienda). Los precios NO se
+  muestran al pasar el cursor: solo al abrir el detalle.
 */
 export function ProductCard({
   item,
@@ -32,7 +31,6 @@ export function ProductCard({
 }) {
   const comparable = (item.n_tiendas ?? 0) >= 2;
   const strongDiff = isStrongDifference(item);
-  const pct = strongDifferencePct(item);
 
   return (
     <article
@@ -41,28 +39,26 @@ export function ProductCard({
         className,
       )}
     >
-      <StorePricesPopover item={item}>
-        <button
-          type="button"
-          onClick={onOpenDetail ? () => onOpenDetail(item) : undefined}
-          className="relative block aspect-square w-full overflow-hidden rounded-t-lg bg-white p-4"
-          aria-label={`Ver detalle de ${item.nombre}`}
-        >
-          <ProductImage ean={item.ean} alt={item.nombre} className="h-full w-full" />
-          <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
-            {strongDiff && (
-              <Badge variant="savings" className="shadow-sm">
-                <TrendingDown className="size-3" /> Destacado{pct ? ` -${Math.round(pct * 100)}%` : ""}
-              </Badge>
-            )}
-            {tags.map((tag) => (
-              <Badge key={tag} variant="muted" className="shadow-sm">
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        </button>
-      </StorePricesPopover>
+      <button
+        type="button"
+        onClick={onOpenDetail ? () => onOpenDetail(item) : undefined}
+        className="relative block aspect-square w-full overflow-hidden rounded-t-lg bg-white p-4"
+        aria-label={`Ver detalle de ${item.nombre}`}
+      >
+        <ProductImage ean={item.ean} alt={item.nombre} category={item.categoria} className="h-full w-full" />
+        <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+          {strongDiff && (
+            <Badge variant="savings" className="shadow-sm">
+              <TrendingDown className="size-3" /> Destacado
+            </Badge>
+          )}
+          {tags.map((tag) => (
+            <Badge key={tag} variant="muted" className="shadow-sm">
+              {tag}
+            </Badge>
+          ))}
+        </div>
+      </button>
 
       <div className="flex flex-1 flex-col gap-2 p-4 pt-3">
         <div className="min-h-[3.1rem]">
@@ -106,13 +102,20 @@ export function ProductCard({
               <span className="text-xs text-muted-foreground">en una tienda</span>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">Sin precio en el último snapshot.</p>
+            <p className="text-xs text-muted-foreground">Sin precio disponible.</p>
           )}
         </div>
 
-        <Button size="sm" className="mt-1 w-full" onClick={() => onAdd(item)}>
-          <Plus /> Agregar
-        </Button>
+        <div className="mt-1 flex gap-1.5">
+          <Button size="sm" className="flex-1" onClick={() => onAdd(item)}>
+            <Plus /> Añadir directo
+          </Button>
+          {onOpenDetail && (
+            <Button size="sm" variant="outline" className="flex-1" onClick={() => onOpenDetail(item)}>
+              Ver precios
+            </Button>
+          )}
+        </div>
       </div>
     </article>
   );

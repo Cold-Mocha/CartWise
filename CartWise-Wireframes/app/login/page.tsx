@@ -2,7 +2,6 @@ import Link from "next/link";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { LandingCta } from "@/components/landing/landing-cta";
-import { StoreCoverage } from "@/components/store/store-coverage";
 import { Card } from "@/components/ui/card";
 
 export default function LoginPage() {
@@ -38,15 +37,8 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6 rounded-lg border border-dashed border-border bg-muted/40 p-4 text-center text-xs text-muted-foreground">
-            Tu compra pendiente, listas, historial y despensa se guardan localmente para la demo. No se
-            envía ningún dato a un servidor de usuarios.
-          </div>
-
-          <div className="mt-6 space-y-2">
-            <p className="text-center text-xs font-bold uppercase tracking-widest text-primary">
-              Supermercados cubiertos
-            </p>
-            <StoreCoverage showSoon={false} className="justify-center" />
+            Tu compra pendiente, compras planificadas, historial y despensa se guardan localmente para la
+            demo. No se envía ningún dato a un servidor de usuarios.
           </div>
         </Card>
       </main>

@@ -1,21 +1,24 @@
 "use client";
 
 import * as React from "react";
-import { Package } from "lucide-react";
+import { categoryIcon } from "@/lib/categories";
 import { cn } from "@/lib/utils";
 
 /*
   Imagen de producto. Las fotos reales viven en /public/images/products/{ean}.jpg
-  (descargadas por el Scrapper). Si no hay EAN o falla la carga, se usa un
-  placeholder limpio (plan §13.4).
+  (descargadas por el Scrapper). Si no hay EAN o falla la carga, se muestra un
+  ícono referencial según la categoría del producto para no dejar el espacio
+  vacío.
 */
 export function ProductImage({
   ean,
   alt,
+  category,
   className,
 }: {
   ean?: string | null;
   alt: string;
+  category?: string | null;
   className?: string;
 }) {
   const [failed, setFailed] = React.useState(false);
@@ -29,7 +32,7 @@ export function ProductImage({
         )}
         aria-hidden="true"
       >
-        <Package className="size-1/3" />
+        {React.createElement(categoryIcon(category), { className: "size-1/3" })}
       </span>
     );
   }

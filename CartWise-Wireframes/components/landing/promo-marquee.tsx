@@ -1,12 +1,9 @@
-import { COVERED_STORES, SNAPSHOT_FECHA } from "@/lib/constants";
-
 const MESSAGES = [
   "Compara antes de comprar",
-  `Snapshot ${SNAPSHOT_FECHA}`,
-  ...COVERED_STORES,
   "Arma tu compra pendiente",
   "Encuentra dónde conviene",
   "Diferencias destacadas cada día",
+  "Ahorra en tu compra del mes",
 ];
 
 // Franja superior en movimiento (marquesina). Pura presentación; respeta

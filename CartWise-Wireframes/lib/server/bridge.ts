@@ -11,7 +11,7 @@ const PROJECT_ROOT = process.cwd();
 
 function resolveDbPath(): string {
   if (process.env.CARTWISE_DB_PATH) {
-    return path.resolve(PROJECT_ROOT, process.env.CARTWISE_DB_PATH);
+    return path.resolve(/* turbopackIgnore: true */ PROJECT_ROOT, process.env.CARTWISE_DB_PATH);
   }
   return path.resolve(PROJECT_ROOT, "../Scrapper/datos/comparadores/comparador.sqlite");
 }

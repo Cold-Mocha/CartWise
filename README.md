@@ -1,14 +1,15 @@
 # CartWise
 
 Comparador de precios de supermercados chilenos. CartWise toma un *snapshot* del
-catálogo de comida de las principales cadenas, lo normaliza a un esquema común,
+catálogo de supermercado de las principales cadenas, lo normaliza a un esquema común,
 **compara el precio del mismo producto entre tiendas usando el EAN (código de barras)**
 y ofrece una web app donde el usuario arma una compra y descubre dónde comprar más barato.
 
 > **Propósito:** investigación / uso personal y demostración académica (no comercial).
-> **Alcance de datos = SOLO COMIDA:** comestible o bebible (incluido alcohol). Se excluye
-> limpieza, cuidado personal, mascotas, bebé/pañales, hogar, belleza, farmacia, cigarrillos
-> y vestuario.
+> **Alcance de datos actual = `grocery`:** comida/bebida + limpieza, cuidado personal,
+> bebé/pañales, mascotas y hogar consumible. Se excluye vestuario, juguetes/librería,
+> electro/hogar durable, farmacia/medicamentos y cigarrillos. El pipeline también soporta
+> `food` (solo comida/bebida) y `all` (sin filtro).
 
 Este documento es la **fuente única de contexto** del proyecto (estado, propósito,
 arquitectura y funcionamiento). Consolida los antiguos docs de estado y plan.
@@ -25,8 +26,8 @@ Se conserva como material fuente sin consolidar: `Scrapper/docs/investigaciones/
 
 ### Descripción breve
 
-Cartwise es un **MVP académico / no comercial** para comparar precios de alimentos entre
-supermercados chilenos usando **datos de catálogo previamente capturados y normalizados**
+Cartwise es un **MVP académico / no comercial** para comparar precios de productos de
+supermercado entre cadenas chilenas usando **datos de catálogo previamente capturados y normalizados**
 (no es un sistema de precios en tiempo real).
 
 ### Funcionalidades del MVP (activas)
@@ -59,7 +60,8 @@ supermercados chilenos usando **datos de catálogo previamente capturados y norm
 - No tiene pagos ni suscripción.
 - No muestra precios en tiempo real (son referenciales según el último snapshot).
 - No cubre todos los supermercados (solo 4).
-- No cubre todas las categorías (solo comida y bebida).
+- No cubre todas las categorías posibles; el mart activo usa scope `grocery` y excluye
+  farmacia/medicamentos, cigarrillos, vestuario, juguetes/librería y hogar durable.
 - No recomienda usando IA.
 - No tiene predicción de precios.
 - No tiene rutas ni mapas.
@@ -123,7 +125,7 @@ tiempo real*: son referenciales según el último snapshot.
 ```text
 CartWise/
 ├── Scrapper/              # Pipeline de datos (Python): scraping + comparador por EAN
-│   ├── scripts/           # Scrapers (Trébol/Bootic, VTEX) + filtro de comida
+│   ├── scripts/           # Scrapers (Trébol/Bootic, VTEX) + scopes food/grocery/all
 │   ├── comparadores/      # Construcción del mart unificado (Capa 1 EAN + Capa 2 genérico)
 │   ├── validaciones/      # Reportes de calidad de datos
 │   ├── datos/             # raw (JSONL) → staging (SQLite/tienda) → comparadores (mart) + snapshots
@@ -180,34 +182,41 @@ Tottus y Líder se dejan para el final (mayor riesgo / anti-bot).
 
 ## 3. Estado por fases
 
-> **FASE 2 (Tottus) es la siguiente.** Fases 0 y 1 completadas. Total capturado:
-> **4 de 6 tiendas, ~50.832 productos de comida.**
+> **FASE 2 (Tottus) es la siguiente.** Fases 0 y 1 completadas. Scope activo:
+> **`grocery` con 70.584 filas staging**. El raw conserva 74.192 productos
+> descargados antes del filtro de scope.
 
 | Fase | Tienda(s) | Estado |
 |------|-----------|--------|
-| **0** | El Trébol (Bootic) | ✅ **COMPLETADA** — 6.681 prod comida (97.5% EAN) |
-| **1** | Jumbo / Santa Isabel / Unimarc (VTEX) | ✅ **COMPLETADA** — 24.355 / 12.818 / 6.978 prod (≈99% EAN) |
+| **0** | El Trébol (Bootic) | ✅ **COMPLETADA** — 8.680 prod grocery (98.0% EAN) |
+| **1** | Jumbo / Santa Isabel / Unimarc (VTEX) | ✅ **COMPLETADA** — 34.880 / 17.781 / 9.243 prod grocery (≈99% EAN) |
 | **2** | Tottus (commercetools/Next.js) | ⚪ **SIGUIENTE** — intentar `__NEXT_DATA__` o Playwright |
 | **3** | Líder (Walmart/Akamai) | ⚪ No iniciada — servicio gestionado o Playwright stealth |
 | **★** | Matching cross-tienda | ✅ Capa 1 (EAN) + Capa 2 (genérico) construidas |
 
 **Detalle de lo hecho:**
 - Snapshot fechado del raw en `datos/snapshots/2026-06-24/` (JSONL + BD por nodo, 681 MB).
+- Staging y mart revalidados el **2026-06-29** con scope configurable `food | grocery | all`.
+  El mart activo usa `grocery`: incluye limpieza, cuidado personal, bebé/pañales y mascotas;
+  excluye farmacia/medicamentos, cigarrillos, vestuario, juguetes/librería y hogar durable.
 - Pipeline validado end-to-end en El Trébol antes de escalar a VTEX.
-- Comparador: **30.301 productos únicos** (29.797 con EAN), **50.768 ofertas**,
-  **1.906 productos en las 4 tiendas**, 13.156 en ≥2. Capa 2: 26.368 genéricos,
-  29.908 miembros, 11.581 genéricos en ≥2 tiendas, **5.269 candidatos difusos**.
+- Comparador grocery: **42.661 productos únicos** (42.158 con EAN), **70.460 ofertas**,
+  **2.425 productos en las 4 tiendas**, 17.989 en ≥2. Capa 2: 38.564 genéricos,
+  42.581 miembros, 16.206 genéricos en ≥2 tiendas, **8.607 candidatos difusos**.
 
 ## 4. Arquitectura del pipeline (3 niveles de datos)
 
 ```text
 datos/raw/*.jsonl            # JSON crudo descargado (conserva TODO, sin filtrar)
-  → datos/staging/*.sqlite   # 1 BD normalizada por tienda (filtro COMIDA aplicado)
+  → datos/staging/*.sqlite   # 1 BD normalizada por tienda (scope aplicado)
   → datos/comparadores/comparador.sqlite   # mart unificado, reconstruible
 ```
 
-- El filtro de comida vive en `scripts/comida.py` (autotest: `python3 -m scripts.comida`).
-  Se aplica al normalizar; el JSONL crudo conserva todo. Flag `--all` lo desactiva.
+- El filtro de alcance vive en `scripts/comida.py` (autotest: `python3 -m scripts.comida`).
+  Se aplica al normalizar; el JSONL crudo conserva todo. Scopes:
+  - `food`: comida/bebida, incluido alcohol.
+  - `grocery`: `food` + limpieza, cuidado personal, bebé/pañales, mascotas y hogar consumible.
+  - `all`: sin filtro.
 - Los scrapers son **resumibles** (checkpoint de categorías/productos) y la carga es
   **idempotente** (rehace la BD desde el JSONL).
 - Stack: Python 3.12 + httpx async + asyncio + rate limiting + backoff. SQLite local
@@ -279,19 +288,70 @@ Tablas/vistas clave: `supermercado`, `producto_marca`, `oferta`, `producto_gener
 cd /home/delia/Documentos/CartWise/Scrapper
 
 # El Trébol (resumible; ~8.900 prod, 45-60 min)
-python3 -m scripts.scraper_trebol --rate 3 --workers 5
-python3 -m validaciones.validar_trebol           # reporte de calidad
+python3 -m scripts.scraper_trebol --scope grocery --rate 3 --workers 5
+python3 -m validaciones.validar_trebol --scope grocery   # reporte de calidad
 
 # VTEX (resumible; en segundo plano para que no se corte)
-nohup python3 -m scripts.scraper_vtex --store jumbo --rate 3 > datos/logs/scrape_jumbo.log 2>&1 &
+nohup python3 -m scripts.scraper_vtex --store jumbo --scope grocery --rate 3 > datos/logs/scrape_jumbo.log 2>&1 &
 #   cambiar --store por santaisabel / unimarc
 
 # Solo recargar SQLite desde lo ya descargado (sin volver a bajar):
-python3 -m scripts.scraper_vtex --store jumbo --load-only
+python3 -m scripts.scraper_trebol --load-only --scope grocery
+python3 -m scripts.scraper_vtex --store jumbo --load-only --scope grocery
+python3 -m scripts.scraper_vtex --store santaisabel --load-only --scope grocery
+python3 -m scripts.scraper_vtex --store unimarc --load-only --scope grocery
+
+# Autotests de filtro y Capa 2:
+python3 -m scripts.comida
+python3 -m comparadores.capa2
 
 # Reconstruir el mart (idempotente):
-python3 -m comparadores.construir_comparador
+python3 -m comparadores.construir_comparador --scope grocery
 ```
+
+### Estado validado del pipeline (2026-06-29)
+
+Última reconstrucción local: raw ampliado/resumible → staging `grocery` →
+`comparador.sqlite` con `metadata.scope = grocery`. Métricas completas en
+`Scrapper/datos/comparadores/metricas_grocery.json`.
+
+| Tienda | Filas staging | Con EAN | Disponibles | Ofertas en mart |
+|---|---:|---:|---:|---:|
+| El Trébol | 8.680 | 8.510 | 3.877 | 8.680 |
+| Jumbo | 34.880 | 34.745 | 19.772 | 34.791 |
+| Santa Isabel | 17.781 | 17.663 | 17.771 | 17.746 |
+| Unimarc | 9.243 | 9.163 | 8.474 | 9.243 |
+
+Resumen del mart:
+- `producto_marca`: 42.661 productos únicos; 42.158 con EAN y 503 sin EAN.
+- `oferta`: 70.460 filas producto×tienda.
+- Comparables exactos por EAN en ≥2 tiendas: 17.989; en las 4 tiendas: 2.425.
+- Capa 2: 38.564 genéricos, 42.581 miembros, 16.206 genéricos en ≥2 tiendas y
+  8.607 candidatos difusos.
+- Productos con marca: 42.647; con imagen: 42.657; con link: 42.661.
+- Productos con precio lista: 41.566; productos con oferta real: 7.258.
+- Ofertas con precio lista: 68.499; ofertas marcadas como oferta real: 9.790.
+- `PRAGMA integrity_check`: `ok`.
+
+Conteo por tipo (`producto_marca`):
+
+| Tipo | Productos |
+|---|---:|
+| food_bebida | 30.778 |
+| cuidado_personal | 7.129 |
+| limpieza_hogar | 2.958 |
+| bebé | 979 |
+| mascotas | 757 |
+| hogar_consumible | 60 |
+
+Top categorías por tienda con scope `grocery`:
+
+| Tienda | Categorías principales |
+|---|---|
+| El Trébol | Vinos Tintos 294 · Galletas Dulces 253 · Chocolates 170 · Yogurt 155 · Shampoo 153 |
+| Jumbo | Vinos Tintos 1.114 · Shampoo 659 · Cervezas Tradicionales 414 · Cepillos de Pelo y Accesorios 410 · Cervezas Artesanales 367 |
+| Santa Isabel | Vinos Tintos 855 · Shampoo 348 · Cervezas Tradicionales 245 · Vinos Blancos 207 · Coloración y Tintura de Pelo 199 |
+| Unimarc | Vinos Tintos 253 · Shampoo 166 · Chocolates 96 · Condimentos 88 · Galletas Dulces 86 |
 
 Inspección rápida si tienes instalado `sqlite3`:
 ```bash
@@ -449,7 +509,7 @@ canastas/planes en backend; vistas de detalle por producto con historial de prec
 ## 12. Roadmap / pendientes (ambos lados)
 
 **Scrapper:**
-1. **Curar los 5.269 candidatos difusos** de Capa 2 antes de usarlos como sustituciones fuertes.
+1. **Curar los 8.607 candidatos difusos** de Capa 2 antes de usarlos como sustituciones fuertes.
 2. **Fase 2 — Tottus** (commercetools/Next.js): `__NEXT_DATA__` o Playwright.
 3. **Fase 3 — Líder** (Walmart/Akamai): servicio gestionado o Playwright stealth.
 4. Confirmar dependencia de precios VTEX respecto a *sales channel* / región.

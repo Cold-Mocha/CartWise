@@ -58,6 +58,18 @@ def get_stores(con: sqlite3.Connection) -> list[dict]:
     ]
 
 
+def get_metadata(con: sqlite3.Connection) -> dict:
+    exists = con.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='metadata'"
+    ).fetchone()
+    if not exists:
+        return {}
+    return {
+        row["clave"]: row["valor"]
+        for row in con.execute("SELECT clave, valor FROM metadata")
+    }
+
+
 def health(con: sqlite3.Connection, _payload: dict) -> dict:
     counts = {}
     for key, sql in {
@@ -68,7 +80,13 @@ def health(con: sqlite3.Connection, _payload: dict) -> dict:
         "genericComparable": "SELECT COUNT(*) FROM v_comparacion_generica WHERE n_tiendas >= 2",
     }.items():
         counts[key] = con.execute(sql).fetchone()[0]
-    return {"ok": True, "counts": counts, "stores": get_stores(con)}
+    metadata = get_metadata(con)
+    return {
+        "ok": True,
+        "scope": metadata.get("scope"),
+        "counts": counts,
+        "stores": get_stores(con),
+    }
 
 
 def token_clauses(prefix: str, q: str, params: list) -> str:
@@ -80,9 +98,9 @@ def token_clauses(prefix: str, q: str, params: list) -> str:
         like = f"%{token}%"
         if prefix == "pm":
             clauses.append(
-                "(pm.nombre_norm LIKE ? OR pm.marca_norm LIKE ? OR pm.ean LIKE ? OR lower(pm.nombre) LIKE ?)"
+                "(pm.nombre_norm LIKE ? OR pm.marca_norm LIKE ? OR pm.ean LIKE ? OR lower(pm.nombre) LIKE ? OR lower(pm.categoria) LIKE ?)"
             )
-            params.extend([like, like, like, like])
+            params.extend([like, like, like, like, like])
         else:
             clauses.append("(pg.nombre_generico LIKE ? OR pg.categoria_norm LIKE ?)")
             params.extend([like, like])
@@ -105,6 +123,7 @@ def search_products(con: sqlite3.Connection, payload: dict) -> dict:
                 pm.nombre,
                 pm.marca,
                 pm.categoria,
+                pm.imagen_url,
                 pm.generico_id,
                 pg.nombre_generico AS generico_nombre,
                 pg.categoria_norm AS generico_categoria,
@@ -116,6 +135,7 @@ def search_products(con: sqlite3.Connection, payload: dict) -> dict:
                 vc.diferencia,
                 min_offer.precio_min_store_key,
                 min_offer.precio_min_store_url,
+                min_offer.precio_min_url,
                 min_offer.precio_min_disponible,
                 'Exacto por EAN' AS match_label
             FROM producto_marca pm
@@ -126,6 +146,7 @@ def search_products(con: sqlite3.Connection, payload: dict) -> dict:
                     o.producto_marca_id,
                     s.nombre AS precio_min_store_key,
                     s.sitio_web AS precio_min_store_url,
+                    o.url AS precio_min_url,
                     o.disponible AS precio_min_disponible
                 FROM oferta o
                 JOIN supermercado s ON s.id = o.supermercado_id
@@ -248,6 +269,7 @@ def top_deals(con: sqlite3.Connection, payload: dict) -> dict:
                 diferencia,
                 min_offer.precio_min_store_key,
                 min_offer.precio_min_store_url,
+                min_offer.precio_min_url,
                 min_offer.precio_min_disponible,
                 'Exacto por EAN' AS match_label
             FROM v_comparacion vc
@@ -256,6 +278,7 @@ def top_deals(con: sqlite3.Connection, payload: dict) -> dict:
                     o.producto_marca_id,
                     s.nombre AS precio_min_store_key,
                     s.sitio_web AS precio_min_store_url,
+                    o.url AS precio_min_url,
                     o.disponible AS precio_min_disponible
                 FROM oferta o
                 JOIN supermercado s ON s.id = o.supermercado_id
@@ -283,13 +306,12 @@ def top_deals(con: sqlite3.Connection, payload: dict) -> dict:
     return {"items": exact}
 
 
-def deals_by_category(con: sqlite3.Connection, payload: dict) -> dict:
-    # Carruseles tipo supermercado: por cada categoría con más diferencias
-    # destacadas reales (>=20%, plan §4.4 y §5.2), devuelve sus mejores items.
-    # Solo lectura sobre la misma vista de comparación; no inventa datos.
-    per_category = min(20, positive_int(payload.get("perCategory"), 10))
-    max_categories = min(12, positive_int(payload.get("categories"), 6))
-    candidates = rows(
+def strong_deals(con: sqlite3.Connection, payload: dict) -> dict:
+    # Lista plana de diferencias destacadas reales (>=20%, plan §4.4). El frontend
+    # la reagrupa en categorías generales. Solo lectura sobre v_comparacion; no
+    # inventa datos. Incluye la URL oficial del producto en la tienda más barata.
+    limit = min(800, positive_int(payload.get("limit"), 400))
+    items = rows(
         con.execute(
             """
             SELECT
@@ -305,6 +327,7 @@ def deals_by_category(con: sqlite3.Connection, payload: dict) -> dict:
                 diferencia,
                 min_offer.precio_min_store_key,
                 min_offer.precio_min_store_url,
+                min_offer.precio_min_url,
                 min_offer.precio_min_disponible,
                 'Exacto por EAN' AS match_label
             FROM v_comparacion vc
@@ -313,6 +336,7 @@ def deals_by_category(con: sqlite3.Connection, payload: dict) -> dict:
                     o.producto_marca_id,
                     s.nombre AS precio_min_store_key,
                     s.sitio_web AS precio_min_store_url,
+                    o.url AS precio_min_url,
                     o.disponible AS precio_min_disponible
                 FROM oferta o
                 JOIN supermercado s ON s.id = o.supermercado_id
@@ -335,35 +359,69 @@ def deals_by_category(con: sqlite3.Connection, payload: dict) -> dict:
               AND categoria IS NOT NULL
               AND categoria <> ''
             ORDER BY diferencia DESC
-            LIMIT 800
-            """
+            LIMIT ?
+            """,
+            (limit,),
         )
     )
-    groups: dict[str, list[dict]] = {}
-    order: list[str] = []
-    for item in candidates:
-        cat = item["categoria"]
-        if cat not in groups:
-            groups[cat] = []
-            order.append(cat)
-        if len(groups[cat]) < per_category:
-            decorate_price_store(item)
-            groups[cat].append(item)
-    # Prioriza categorías con más items destacados.
-    order.sort(key=lambda c: len(groups[c]), reverse=True)
-    result = [
-        {"categoria": cat, "items": groups[cat]}
-        for cat in order[:max_categories]
-        if len(groups[cat]) >= 3
-    ]
-    return {"groups": result}
+    for item in items:
+        decorate_price_store(item)
+    return {"items": items}
+
+
+def store_deals(con: sqlite3.Connection, payload: dict) -> dict:
+    # Mejores ofertas REALES de cada supermercado en el snapshot actual: solo
+    # promociones donde la tienda marcó un precio bajo su precio de lista
+    # (oferta_real=1 y precio_lista > precio), disponibles, ordenadas por el
+    # mayor descuento porcentual. Distinto de "diferencias destacadas" (que
+    # compara precios ENTRE cadenas): esto es el descuento DENTRO de una tienda.
+    per_store = min(40, positive_int(payload.get("perStore"), 12))
+    result = []
+    for key, label in STORE_NAMES.items():
+        items = rows(
+            con.execute(
+                """
+                SELECT
+                    pm.id,
+                    'product' AS kind,
+                    pm.ean,
+                    pm.nombre,
+                    pm.marca,
+                    pm.categoria,
+                    o.precio AS precio_min,
+                    o.precio_lista,
+                    o.oferta_real,
+                    o.url AS precio_min_url,
+                    o.disponible AS precio_min_disponible,
+                    ? AS precio_min_store_key,
+                    'Oferta en tienda' AS match_label
+                FROM oferta o
+                JOIN supermercado s ON s.id = o.supermercado_id
+                JOIN producto_marca pm ON pm.id = o.producto_marca_id
+                WHERE s.nombre = ?
+                  AND o.oferta_real = 1
+                  AND o.precio > 0
+                  AND o.precio_lista > o.precio
+                  AND o.disponible = 1
+                  AND pm.categoria IS NOT NULL
+                  AND pm.categoria <> ''
+                ORDER BY (o.precio_lista - o.precio) * 1.0 / o.precio_lista DESC
+                LIMIT ?
+                """,
+                (key, key, per_store),
+            )
+        )
+        for item in items:
+            item["precio_min_store_label"] = label
+        result.append({"store_key": key, "store_label": label, "items": items})
+    return {"stores": result}
 
 
 def product_offers(con: sqlite3.Connection, payload: dict) -> dict:
     product_id = positive_int(payload.get("id"))
     product = con.execute(
         """
-        SELECT id, ean, nombre, marca, categoria, generico_id
+        SELECT id, ean, nombre, marca, categoria, imagen_url, generico_id
         FROM producto_marca
         WHERE id = ?
         """,
@@ -380,6 +438,7 @@ def product_offers(con: sqlite3.Connection, payload: dict) -> dict:
                 o.url,
                 o.precio,
                 o.precio_lista,
+                o.oferta_real,
                 o.disponible,
                 o.stock,
                 o.capturado_en
@@ -408,10 +467,12 @@ def generic_best_offers(con: sqlite3.Connection, generic_id: int) -> list[dict]:
                 pm.nombre AS product_name,
                 pm.marca,
                 pm.ean,
+                pm.imagen_url,
                 o.sku_tienda,
                 o.url,
                 o.precio,
                 o.precio_lista,
+                o.oferta_real,
                 o.disponible,
                 o.stock,
                 o.capturado_en
@@ -462,6 +523,7 @@ def item_descriptor(con: sqlite3.Connection, kind: str, item_id: int) -> dict | 
                 marca,
                 categoria,
                 ean,
+                imagen_url,
                 'Exacto por EAN' AS match_label
             FROM producto_marca
             WHERE id = ?
@@ -534,6 +596,8 @@ def compare_basket(con: sqlite3.Connection, payload: dict) -> dict:
                     "brand": item["descriptor"].get("marca"),
                     "quantity": item["quantity"],
                     "price": offer["precio"],
+                    "listPrice": offer.get("precio_lista"),
+                    "realOffer": bool(offer.get("oferta_real")),
                     "lineTotal": line_total,
                     "unitPrice": unit_price,
                     "unitBase": unit_base,
@@ -602,7 +666,8 @@ def compare_basket(con: sqlite3.Connection, payload: dict) -> dict:
 OPERATIONS = {
     "health": health,
     "topDeals": top_deals,
-    "dealsByCategory": deals_by_category,
+    "strongDeals": strong_deals,
+    "storeDeals": store_deals,
     "searchProducts": search_products,
     "searchGeneric": search_generic,
     "productOffers": product_offers,

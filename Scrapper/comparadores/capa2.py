@@ -15,7 +15,7 @@ import re
 import sqlite3
 import unicodedata
 
-from scripts.comida import is_non_food
+from scripts.comida import is_scope_product, normalize_scope
 
 
 UNIT_PATTERN = (
@@ -290,11 +290,24 @@ def category_bucket(categoria: str | None) -> str:
     return cat
 
 
-def is_blocked_category(categoria: str | None) -> bool:
-    cat = normalize_text(categoria)
-    if not cat:
+def is_blocked_category(categoria: str | None, nombre: str | None = None,
+                        scope: str = "food") -> bool:
+    scope = normalize_scope(scope)
+    if scope == "all":
         return False
-    return is_non_food(cat) or any(p in cat for p in BLOCKED_CATEGORY_PATTERNS)
+    cat = normalize_text(categoria)
+    name = normalize_text(nombre)
+    if cat or name:
+        if not is_scope_product(name, cat, scope):
+            return True
+    # Si el filtro fino acepto el producto por una senal clara de comida
+    # (por ejemplo carnes en categoria "Parrilleros"), solo aplicar bloqueos
+    # adicionales de Capa 2 para categorias explicitamente problematicas.
+    return (
+        scope == "food"
+        and bool(cat)
+        and any(p in cat for p in BLOCKED_CATEGORY_PATTERNS - {"parrillero", "carbon"})
+    )
 
 
 def generic_name(nombre: str | None, marca: str | None) -> str | None:
@@ -326,11 +339,11 @@ def generic_name(nombre: str | None, marca: str | None) -> str | None:
     return " ".join(deduped)
 
 
-def analyze_product(row: sqlite3.Row) -> ProductAnalysis:
+def analyze_product(row: sqlite3.Row, scope: str = "food") -> ProductAnalysis:
     nombre = row["nombre"]
     marca = row["marca"]
     categoria = row["categoria"]
-    blocked = is_blocked_category(categoria)
+    blocked = is_blocked_category(categoria, nombre, scope)
     parsed = parse_content(nombre, row["cantidad"], row["unidad"], row["gramaje_g"])
     gen_name = generic_name(nombre, marca)
     return ProductAnalysis(
@@ -341,7 +354,7 @@ def analyze_product(row: sqlite3.Row) -> ProductAnalysis:
         nombre_generico=gen_name,
         contenido=parsed,
         bloqueado=blocked,
-        razon_bloqueo="categoria_no_comida" if blocked else None,
+        razon_bloqueo=f"fuera_scope_{scope}" if blocked else None,
     )
 
 
@@ -352,7 +365,8 @@ def _round_total(value: float | None) -> float | None:
     return int(rounded) if rounded.is_integer() else rounded
 
 
-def build_capa2(con: sqlite3.Connection) -> dict[str, int]:
+def build_capa2(con: sqlite3.Connection, scope: str = "food") -> dict[str, int]:
+    scope = normalize_scope(scope)
     con.row_factory = sqlite3.Row
     cur = con.cursor()
     rows = cur.execute("""
@@ -364,7 +378,7 @@ def build_capa2(con: sqlite3.Connection) -> dict[str, int]:
     groups: dict[tuple[str, str, str, float], list[ProductAnalysis]] = {}
 
     for row in rows:
-        analysis = analyze_product(row)
+        analysis = analyze_product(row, scope)
         analyses.append(analysis)
         content = analysis.contenido
         cur.execute("""
@@ -498,6 +512,10 @@ def _selftest() -> None:
         assert parsed.pack_unidades == expected_pack, (name, parsed)
     assert generic_name("Leche Colun Entera 1 L", "Colun") == "leche entero"
     assert is_blocked_category("Inflables Intex")
+    assert is_blocked_category("0 a 3 meses", "Body Manga Corta Animales + Calza Talla 0-3")
+    assert not is_blocked_category("Parrilleros", "Huachalomo vacuno al vacío 1.5 Kg")
+    assert is_blocked_category("Detergente Líquido", "Detergente Líquido Concentrado", "food")
+    assert not is_blocked_category("Detergente Líquido", "Detergente Líquido Concentrado", "grocery")
     print("Capa 2 selftest: OK")
 
 

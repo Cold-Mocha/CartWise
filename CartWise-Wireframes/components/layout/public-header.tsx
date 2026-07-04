@@ -10,9 +10,6 @@ export function PublicHeader() {
           <a href="#como-funciona" className="transition-colors hover:text-foreground">
             Cómo funciona
           </a>
-          <a href="#cubiertos" className="transition-colors hover:text-foreground">
-            Supermercados
-          </a>
           <a href="#destacadas" className="transition-colors hover:text-foreground">
             Diferencias destacadas
           </a>

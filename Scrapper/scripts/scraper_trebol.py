@@ -39,11 +39,11 @@ from datetime import datetime, timezone
 
 import requests
 
-from scripts.comida import is_food_trebol
+from scripts.comida import is_scope_trebol, normalize_scope
 
-# Si True, al normalizar se descartan los productos que no son comida
-# (comestible/bebible). El JSONL crudo conserva TODO; el filtro se aplica al cargar.
-SOLO_COMIDA = True
+# Scope por defecto del pipeline historico. El JSONL crudo conserva todo; el
+# filtro se aplica al cargar staging.
+DEFAULT_SCOPE = "food"
 
 BASE = "https://www.supertrebol.cl"
 SITEMAP = f"{BASE}/sitemap.xml"
@@ -149,14 +149,23 @@ def load_done_urls(raw_path: str) -> set:
 # --------------------------------------------------------------------------- #
 # Normalización (1 fila por variante)
 # --------------------------------------------------------------------------- #
-def normalize(product: dict) -> list[dict]:
+def _real_offer(precio, precio_lista) -> int:
+    try:
+        p = int(round(float(precio)))
+        lp = int(round(float(precio_lista)))
+    except (TypeError, ValueError):
+        return 0
+    return 1 if p > 0 and lp > p else 0
+
+
+def normalize(product: dict, scope: str = DEFAULT_SCOPE) -> list[dict]:
     """Mapea el JSON Bootic al esquema común. Una fila por variante (SKU).
-    Si SOLO_COMIDA, descarta productos que no son comida (según sus colecciones)."""
-    if SOLO_COMIDA:
-        slugs = [c.get("slug") for c in product.get("collections", [])]
-        ptype = (product.get("product_type") or {}).get("name", "")
-        if not is_food_trebol(slugs, ptype):
-            return []
+    Descarta productos fuera del scope configurado."""
+    scope = normalize_scope(scope)
+    slugs = [c.get("slug") for c in product.get("collections", [])]
+    ptype = (product.get("product_type") or {}).get("name", "")
+    if not is_scope_trebol(slugs, ptype, product.get("name") or "", scope):
+        return []
     rows = []
     attrs = {a.get("slug"): a.get("value") for a in product.get("attributes", [])}
     cantidad = attrs.get("cantidad")
@@ -191,6 +200,7 @@ def normalize(product: dict) -> list[dict]:
             # `sale_price` viene null cuando no hay oferta -> no usarlo como principal.
             "precio": v.get("price"),                            # precio de venta vigente
             "precio_lista": v.get("regular_price"),              # precio lista/tachado
+            "oferta_real": _real_offer(v.get("price"), v.get("regular_price")),
             "disponible": bool(v.get("available", product.get("available"))),
             "stock": v.get("online_stock"),
         })
@@ -209,6 +219,10 @@ CREATE TABLE IF NOT EXISTS supermercado (
 CREATE TABLE IF NOT EXISTS snapshot (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     fecha_captura TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS metadata (
+    clave TEXT PRIMARY KEY,
+    valor TEXT
 );
 CREATE TABLE IF NOT EXISTS producto (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -233,6 +247,7 @@ CREATE TABLE IF NOT EXISTS precio (
     producto_id INTEGER REFERENCES producto(id),
     precio INTEGER,
     precio_lista INTEGER,
+    oferta_real INTEGER DEFAULT 0,
     disponible INTEGER,
     stock INTEGER,
     capturado_en TEXT
@@ -241,9 +256,10 @@ CREATE INDEX IF NOT EXISTS idx_producto_ean ON producto(ean);
 """
 
 
-def load_sqlite(db_path: str, raw_path: str):
+def load_sqlite(db_path: str, raw_path: str, scope: str = DEFAULT_SCOPE):
     """(Re)construye el SQLite normalizado desde el JSONL crudo.
     Idempotente: rehace la base desde cero (el JSONL es la fuente de verdad)."""
+    scope = normalize_scope(scope)
     if os.path.exists(db_path):
         os.remove(db_path)
     con = sqlite3.connect(db_path)
@@ -253,6 +269,7 @@ def load_sqlite(db_path: str, raw_path: str):
         "INSERT OR IGNORE INTO supermercado(nombre, plataforma) VALUES (?,?)",
         (SUPERMERCADO, PLATAFORMA),
     )
+    cur.execute("INSERT OR REPLACE INTO metadata(clave, valor) VALUES (?,?)", ("scope", scope))
     cur.execute("SELECT id FROM supermercado WHERE nombre=?", (SUPERMERCADO,))
     superm_id = cur.fetchone()[0]
     now = datetime.now(timezone.utc).isoformat()
@@ -267,7 +284,7 @@ def load_sqlite(db_path: str, raw_path: str):
             except Exception:
                 continue
             n_prod += 1
-            for row in normalize(product):
+            for row in normalize(product, scope):
                 cur.execute(
                     """INSERT INTO producto
                        (snapshot_id, supermercado_id, sku_tienda, product_id_tienda,
@@ -283,9 +300,10 @@ def load_sqlite(db_path: str, raw_path: str):
                 prod_pk = cur.lastrowid
                 cur.execute(
                     """INSERT INTO precio
-                       (producto_id, precio, precio_lista, disponible, stock, capturado_en)
-                       VALUES (?,?,?,?,?,?)""",
-                    (prod_pk, row["precio"], row["precio_lista"],
+                       (producto_id, precio, precio_lista, oferta_real,
+                        disponible, stock, capturado_en)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (prod_pk, row["precio"], row["precio_lista"], row["oferta_real"],
                      1 if row["disponible"] else 0, row["stock"], now),
                 )
                 n_var += 1
@@ -345,7 +363,7 @@ def scrape(args):
                           f"({rate:.1f}/s)", flush=True)
 
     print(f"[3/3] Cargando a SQLite {db_path} …", flush=True)
-    n_prod, n_var = load_sqlite(db_path, raw_path)
+    n_prod, n_var = load_sqlite(db_path, raw_path, args.scope)
     print(f"      {n_prod} productos -> {n_var} variantes (filas) en SQLite.")
     _summary(db_path)
 
@@ -371,12 +389,13 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="máx productos (0=todos)")
     ap.add_argument("--load-only", action="store_true",
                     help="no scrapear; recargar SQLite desde el JSONL existente")
+    ap.add_argument("--scope", choices=("food", "grocery", "all"), default=DEFAULT_SCOPE,
+                    help="alcance a cargar en staging: food, grocery o all")
     ap.add_argument("--all", action="store_true",
-                    help="no filtrar por comida; cargar TODO el catálogo")
+                    help="alias de --scope all")
     args = ap.parse_args()
-    global SOLO_COMIDA
     if args.all:
-        SOLO_COMIDA = False
+        args.scope = "all"
     scrape(args)
 
 

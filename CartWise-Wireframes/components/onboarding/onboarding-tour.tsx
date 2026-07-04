@@ -48,8 +48,8 @@ const STEPS = [
   },
   {
     icon: Bookmark,
-    title: "Listas y despensa",
-    text: "Guarda listas para repetir compras y usa la despensa para llevar el control de lo que ya tienes en casa.",
+    title: "Planifica y organiza",
+    text: "Guarda una compra como planificada para retomarla luego y usa la despensa para llevar el control de lo que ya tienes en casa.",
   },
   {
     icon: BadgeCheck,

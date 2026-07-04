@@ -5,11 +5,10 @@ import { Search, SlidersHorizontal, PackageSearch, X } from "lucide-react";
 import { useAppState } from "@/components/state/app-state";
 import { ProductCard } from "@/components/product/product-card";
 import { ProductDetailDialog } from "@/components/product/product-detail-dialog";
-import { BrowseCarousels } from "@/components/product/browse-carousels";
+import { BrowseDeals } from "@/components/product/browse-deals";
+import { ProductImage } from "@/components/product/product-image";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
-import { TransparencyNote } from "@/components/common/transparency-note";
-import { StoreCoverage } from "@/components/store/store-coverage";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -21,24 +20,27 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { searchExactProducts, searchGenericProducts } from "@/lib/api";
 import { isStrongDifference } from "@/lib/basket";
+import { generalCategory, type GeneralCategory } from "@/lib/categories";
 import { normalizeText } from "@/lib/text";
 import { money } from "@/lib/format";
-import { SUGERENCIAS, COVERED_STORES } from "@/lib/constants";
+import { COVERED_STORES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { SearchItem } from "@/types/cartwise";
 
 const ALL = "__all__";
 
 export default function ProductosPage() {
-  const { addToBasket, addProductsToPantry, confirmed, pantry } = useAppState();
+  const { addToBasket, confirmed, pantry } = useAppState();
   const [query, setQuery] = useState("");
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<SearchItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<SearchItem | null>(null);
+  const [suggestOpen, setSuggestOpen] = useState(false);
 
   // Filtros estilo supermercado.
+  const [minPrice, setMinPrice] = useState<number | null>(null);
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const [brand, setBrand] = useState<string>(ALL);
   const [category, setCategory] = useState<string>(ALL);
@@ -49,7 +51,6 @@ export default function ProductosPage() {
 
   const reqId = useRef(0);
 
-  // Nombres comprados / en despensa para sellos derivados.
   const purchasedNames = useMemo(
     () => new Set(confirmed.flatMap((c) => c.items.map((i) => normalizeText(i.productName)))),
     [confirmed],
@@ -70,7 +71,7 @@ export default function ProductosPage() {
 
   // Debounce de la búsqueda.
   useEffect(() => {
-    const t = setTimeout(() => setTerm(query.trim()), 300);
+    const t = setTimeout(() => setTerm(query.trim()), 250);
     return () => clearTimeout(t);
   }, [query]);
 
@@ -105,25 +106,35 @@ export default function ProductosPage() {
     return t;
   };
 
-  // Opciones de marca y categoría presentes en los resultados.
   const brandOptions = useMemo(
     () => Array.from(new Set(results.map((r) => r.marca).filter(Boolean) as string[])).sort(),
     [results],
   );
-  const categoryOptions = useMemo(
-    () => Array.from(new Set(results.map((r) => r.categoria).filter(Boolean) as string[])).sort(),
-    [results],
-  );
+  // Categorías GENERALES presentes en los resultados.
+  const categoryOptions = useMemo(() => {
+    const set = new Set<GeneralCategory>();
+    for (const r of results) {
+      const g = generalCategory(r.categoria);
+      if (g) set.add(g);
+    }
+    return [...set].sort();
+  }, [results]);
   const priceCeiling = useMemo(
-    () => Math.max(0, ...results.map((r) => r.precio_min ?? 0)),
+    () => Math.max(1000, ...results.map((r) => r.precio_min ?? 0)),
     [results],
   );
 
+  const effMin = minPrice ?? 0;
+  const effMax = maxPrice ?? priceCeiling;
+
   const filtered = useMemo(() => {
     return results.filter((item) => {
-      if (maxPrice != null && item.precio_min != null && item.precio_min > maxPrice) return false;
+      if (item.precio_min != null) {
+        if (item.precio_min < effMin) return false;
+        if (item.precio_min > effMax) return false;
+      }
       if (brand !== ALL && item.marca !== brand) return false;
-      if (category !== ALL && item.categoria !== category) return false;
+      if (category !== ALL && generalCategory(item.categoria) !== category) return false;
       if (storeFilter && item.precio_min_store_label !== storeFilter) return false;
       if (onlyStrong && !isStrongDifference(item)) return false;
       if (onlyMultiStore && (item.n_tiendas ?? 0) < 2) return false;
@@ -131,10 +142,11 @@ export default function ProductosPage() {
       if (seals.has("En despensa") && !pantryNames.has(normalizeText(item.nombre))) return false;
       return true;
     });
-  }, [results, maxPrice, brand, category, storeFilter, onlyStrong, onlyMultiStore, seals, purchasedNames, pantryNames]);
+  }, [results, effMin, effMax, brand, category, storeFilter, onlyStrong, onlyMultiStore, seals, purchasedNames, pantryNames]);
 
   const hasSearch = term.length >= 2;
   const anyFilter =
+    minPrice != null ||
     maxPrice != null ||
     brand !== ALL ||
     category !== ALL ||
@@ -144,6 +156,7 @@ export default function ProductosPage() {
     seals.size > 0;
 
   const clearFilters = () => {
+    setMinPrice(null);
     setMaxPrice(null);
     setBrand(ALL);
     setCategory(ALL);
@@ -161,21 +174,33 @@ export default function ProductosPage() {
       return next;
     });
 
+  // Sugerencias de autocompletado: primeras coincidencias del propio resultado.
+  const suggestions = useMemo(() => results.slice(0, 8), [results]);
+
+  const openFromSuggestion = (item: SearchItem) => {
+    setSuggestOpen(false);
+    setDetail(item);
+  };
+
   return (
     <div className="space-y-6">
       <SectionHeading
-        eyebrow="Catálogo"
         title="Productos"
-        description="Busca como en un supermercado online y compara precios entre las tiendas cubiertas."
+        description="Busca como en un supermercado online y compara precios entre tiendas."
       />
 
-      {/* Buscador grande */}
+      {/* Buscador con autocompletado */}
       <div className="relative">
         <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar por nombre o marca: leche, arroz, aceite, cerveza…"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSuggestOpen(true);
+          }}
+          onFocus={() => setSuggestOpen(true)}
+          onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
+          placeholder="Buscar por nombre, categoría o marca…"
           className="h-14 rounded-xl pl-12 pr-12 text-base shadow-sm"
           aria-label="Buscar productos"
           autoFocus
@@ -190,35 +215,45 @@ export default function ProductosPage() {
             <X className="size-5" />
           </button>
         )}
-      </div>
 
-      {/* Sugerencias rápidas */}
-      <div className="flex flex-wrap gap-2">
-        {SUGERENCIAS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setQuery(s)}
-            className="rounded-full border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:border-primary hover:text-primary"
-          >
-            {s}
-          </button>
-        ))}
+        {/* Dropdown de autosugerencias */}
+        {suggestOpen && hasSearch && suggestions.length > 0 && (
+          <ul className="absolute left-0 right-0 top-full z-30 mt-2 max-h-80 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-xl">
+            {suggestions.map((item) => (
+              <li key={`sug-${item.kind}-${item.id}`}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => openFromSuggestion(item)}
+                  className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-accent"
+                >
+                  <div className="size-9 shrink-0 rounded-md bg-white p-1">
+                    <ProductImage ean={item.ean} alt={item.nombre} category={item.categoria} className="h-full w-full" />
+                  </div>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-foreground">{item.nombre}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {[item.marca, item.categoria].filter(Boolean).join(" · ") || "Producto"}
+                    </span>
+                  </span>
+                  {item.precio_min != null && (
+                    <span className="cw-price shrink-0 text-sm font-bold text-foreground">
+                      {money(item.precio_min)}
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {!hasSearch ? (
-        <div className="space-y-8">
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-primary">
-              Supermercados cubiertos
-            </p>
-            <StoreCoverage />
-          </div>
-          <BrowseCarousels
-            purchasedCategories={purchasedCategories}
-            onOpenDetail={setDetail}
-          />
-        </div>
+        <BrowseDeals
+          purchasedCategories={purchasedCategories}
+          onAdd={addToBasket}
+          onOpenDetail={setDetail}
+        />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
           {/* Panel de filtros */}
@@ -240,27 +275,37 @@ export default function ProductosPage() {
               </div>
 
               <div className="space-y-5">
-                {/* Precio */}
+                {/* Precio (rango con mínimo y máximo) */}
                 <div className="space-y-2">
-                  <label htmlFor="price" className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                    Precio máximo
-                  </label>
+                  <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Rango de precio
+                  </span>
+                  <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                    <span>{money(effMin)}</span>
+                    <span>{money(effMax)}</span>
+                  </div>
+                  <label className="sr-only" htmlFor="price-min">Precio mínimo</label>
                   <input
-                    id="price"
+                    id="price-min"
                     type="range"
                     min={0}
-                    max={Math.max(1000, priceCeiling)}
+                    max={priceCeiling}
                     step={500}
-                    value={maxPrice ?? Math.max(1000, priceCeiling)}
-                    onChange={(e) => setMaxPrice(Number(e.target.value))}
+                    value={effMin}
+                    onChange={(e) => setMinPrice(Math.min(Number(e.target.value), effMax))}
                     className="w-full accent-[var(--primary)]"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Hasta{" "}
-                    <span className="font-semibold text-foreground">
-                      {money(maxPrice ?? Math.max(1000, priceCeiling))}
-                    </span>
-                  </p>
+                  <label className="sr-only" htmlFor="price-max">Precio máximo</label>
+                  <input
+                    id="price-max"
+                    type="range"
+                    min={0}
+                    max={priceCeiling}
+                    step={500}
+                    value={effMax}
+                    onChange={(e) => setMaxPrice(Math.max(Number(e.target.value), effMin))}
+                    className="w-full accent-[var(--primary)]"
+                  />
                 </div>
 
                 {/* Marca */}
@@ -281,7 +326,7 @@ export default function ProductosPage() {
                   </Select>
                 </div>
 
-                {/* Categoría */}
+                {/* Categoría general */}
                 <div className="space-y-2">
                   <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Categoría</span>
                   <Select value={category} onValueChange={setCategory}>
@@ -317,7 +362,7 @@ export default function ProductosPage() {
                   </div>
                 </div>
 
-                {/* Sellos / etiquetas */}
+                {/* Etiquetas */}
                 <div className="space-y-2">
                   <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Etiquetas</span>
                   <div className="flex flex-col gap-1.5">
@@ -372,19 +417,13 @@ export default function ProductosPage() {
                     />
                   ))}
                 </div>
-                <TransparencyNote />
               </>
             )}
           </div>
         </div>
       )}
 
-      <ProductDetailDialog
-        item={detail}
-        onClose={() => setDetail(null)}
-        onAddBasket={addToBasket}
-        onAddPantry={(item) => addProductsToPantry([item])}
-      />
+      <ProductDetailDialog item={detail} onClose={() => setDetail(null)} onAddBasket={addToBasket} />
     </div>
   );
 }

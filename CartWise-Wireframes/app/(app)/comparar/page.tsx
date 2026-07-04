@@ -19,7 +19,7 @@ export default function CompararPage() {
   if (!comparison || comparison.items.length === 0) {
     return (
       <div className="space-y-6">
-        <SectionHeading eyebrow="Comparación" title="Comparación de supermercados" />
+        <SectionHeading eyebrow="Paso 1 de 2" title="Comparación detallada" />
         <EmptyState
           icon={Scale}
           title="Aún no hay una comparación"
@@ -50,14 +50,14 @@ export default function CompararPage() {
   return (
     <div className="space-y-8">
       <SectionHeading
-        eyebrow="Comparación"
-        title="Comparación de supermercados"
-        description="Comparamos tu compra en cada tienda cubierta. La recomendación prioriza cobertura y luego precio."
+        eyebrow="Paso 1 de 2"
+        title="Comparación detallada"
+        description="El análisis completo: diferencias entre supermercados, alternativas y el precio de cada producto por tienda."
         action={
           recommended && (
             <Button asChild>
               <Link href="/plan-recomendado">
-                Ver plan recomendado <ArrowRight />
+                Ver resumen <ArrowRight />
               </Link>
             </Button>
           )

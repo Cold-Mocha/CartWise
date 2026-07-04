@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Minus,
   Plus,
@@ -9,15 +9,13 @@ import {
   Scale,
   ShoppingBasket,
   AlertTriangle,
-  Repeat,
+  RotateCcw,
   Search,
 } from "lucide-react";
 import { useAppState } from "@/components/state/app-state";
 import { ProductImage } from "@/components/product/product-image";
-import { SaveListDialog } from "@/components/purchase/save-list-dialog";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
-import { TransparencyNote } from "@/components/common/transparency-note";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,15 +30,18 @@ export default function CompraPendientePage() {
     basketUnits,
     updateQuantity,
     removeFromBasket,
+    setBasket,
     clearBasket,
     switchToGeneric,
     compareItems,
     comparing,
-    saveCurrentAsList,
     pantry,
   } = useAppState();
 
-  // Nombres normalizados en la despensa, para avisar duplicados (plan §13.5).
+  // Eliminación temporal: el producto quitado queda en gris con opción de
+  // restaurar. Se elimina definitivamente al salir de la página (estado local).
+  const [removed, setRemoved] = useState<BasketItem[]>([]);
+
   const pantryNames = useMemo(
     () => new Set(pantry.map((p) => normalizeText(p.productName))),
     [pantry],
@@ -52,27 +53,30 @@ export default function CompraPendientePage() {
   );
   const withoutPrice = basket.filter((i) => i.precio_min == null).length;
 
-  if (basket.length === 0) {
+  const removeWithUndo = (item: BasketItem) => {
+    removeFromBasket(item);
+    setRemoved((prev) => [item, ...prev.filter((r) => !(r.id === item.id && r.kind === item.kind))]);
+  };
+
+  const restore = (item: BasketItem) => {
+    setBasket([...basket, item]);
+    setRemoved((prev) => prev.filter((r) => !(r.id === item.id && r.kind === item.kind)));
+  };
+
+  if (basket.length === 0 && removed.length === 0) {
     return (
       <div className="space-y-6">
         <SectionHeading eyebrow="Tu carrito" title="Compra pendiente" />
         <EmptyState
           icon={ShoppingBasket}
           title="Tu compra pendiente está vacía"
-          description="Crea una compra o repite una lista guardada."
+          description="Busca productos y agrégalos para comparar supermercados."
           action={
-            <div className="flex gap-2">
-              <Button asChild>
-                <Link href="/productos">
-                  <Search /> Buscar productos
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/listas">
-                  <Repeat /> Repetir una lista
-                </Link>
-              </Button>
-            </div>
+            <Button asChild>
+              <Link href="/productos">
+                <Search /> Buscar productos
+              </Link>
+            </Button>
           }
         />
       </div>
@@ -86,9 +90,11 @@ export default function CompraPendientePage() {
         title="Compra pendiente"
         description={`${plural(basket.length, "producto")} · ${plural(basketUnits, "unidad", "unidades")}`}
         action={
-          <Button variant="ghost" size="sm" onClick={clearBasket} className="text-destructive">
-            <Trash2 /> Vaciar
-          </Button>
+          basket.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={clearBasket} className="text-destructive">
+              <Trash2 /> Vaciar
+            </Button>
+          )
         }
       />
 
@@ -104,11 +110,35 @@ export default function CompraPendientePage() {
                 inPantry={inPantry}
                 onInc={() => updateQuantity(item, item.quantity + 1)}
                 onDec={() => updateQuantity(item, item.quantity - 1)}
-                onRemove={() => removeFromBasket(item)}
+                onRemove={() => removeWithUndo(item)}
                 onSwitch={item.kind === "product" && item.generico_id ? () => switchToGeneric(item) : undefined}
               />
             );
           })}
+
+          {/* Eliminados temporalmente */}
+          {removed.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Eliminados (puedes restaurarlos)
+              </p>
+              {removed.map((item) => (
+                <Card key={`removed-${item.kind}-${item.id}`} className="border-dashed opacity-60">
+                  <CardContent className="flex items-center gap-3 p-3">
+                    <div className="size-12 shrink-0 rounded-md bg-white p-1">
+                      <ProductImage ean={item.ean} alt={item.nombre} category={item.categoria} className="h-full w-full" />
+                    </div>
+                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-muted-foreground line-through">
+                      {item.nombre}
+                    </p>
+                    <Button size="sm" variant="outline" onClick={() => restore(item)}>
+                      <RotateCcw /> Restaurar
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Resumen */}
@@ -133,19 +163,22 @@ export default function CompraPendientePage() {
                 {withoutPrice > 0 && (
                   <p className="inline-flex items-center gap-1.5 text-xs text-destructive">
                     <AlertTriangle className="size-3.5" />
-                    {plural(withoutPrice, "producto")} sin precio en el snapshot
+                    {plural(withoutPrice, "producto")} sin precio disponible
                   </p>
                 )}
               </div>
 
-              <Button className="w-full" size="lg" onClick={() => compareItems(basket)} disabled={comparing}>
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={() => compareItems(basket)}
+                disabled={comparing || basket.length === 0}
+              >
                 <Scale /> {comparing ? "Comparando…" : "Comparar supermercados"}
               </Button>
-              <SaveListDialog onSave={saveCurrentAsList} />
               <p className="text-xs text-muted-foreground">
                 El total final depende de la tienda. La comparación prioriza cobertura y luego precio.
               </p>
-              <TransparencyNote />
             </CardContent>
           </Card>
         </div>
@@ -174,7 +207,7 @@ function BasketRow({
     <Card>
       <CardContent className="flex gap-4 p-4">
         <div className="size-20 shrink-0 rounded-md bg-white p-1.5">
-          <ProductImage ean={item.ean} alt={item.nombre} className="h-full w-full" />
+          <ProductImage ean={item.ean} alt={item.nombre} category={item.categoria} className="h-full w-full" />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -182,9 +215,7 @@ function BasketRow({
             <div className="min-w-0">
               <h3 className="truncate text-sm font-bold text-foreground">{item.nombre}</h3>
               <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                <Badge variant={item.kind === "product" ? "default" : "muted"}>
-                  {item.kind === "product" ? "Producto" : "Comparable por unidad"}
-                </Badge>
+                {item.kind === "generic" && <Badge variant="muted">Comparable por unidad</Badge>}
                 {item.marca && <span className="text-xs text-muted-foreground">{item.marca}</span>}
               </div>
             </div>

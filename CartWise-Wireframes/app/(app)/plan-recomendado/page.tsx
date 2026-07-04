@@ -2,13 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Crown, Check, X, Save, BadgeCheck, Scale, Search } from "lucide-react";
+import { Crown, Check, X, Save, BadgeCheck, ArrowLeft, Search } from "lucide-react";
 import { useAppState } from "@/components/state/app-state";
 import { ConfirmPurchaseDialog } from "@/components/history/confirm-purchase-dialog";
-import { SaveListDialog } from "@/components/purchase/save-list-dialog";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
-import { TransparencyNote } from "@/components/common/transparency-note";
 import { ProductImage } from "@/components/product/product-image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +16,7 @@ import { money, plural } from "@/lib/format";
 import type { SavedPlan } from "@/types/cartwise";
 
 export default function PlanRecomendadoPage() {
-  const { comparison, savePlan, saveCurrentAsList, createPlanFromComparison, confirmPurchase } = useAppState();
+  const { comparison, savePlan, createPlanFromComparison, confirmPurchase } = useAppState();
   const [confirming, setConfirming] = useState<SavedPlan | null>(null);
 
   const rec = comparison?.recommendedStore;
@@ -55,13 +53,13 @@ export default function PlanRecomendadoPage() {
   return (
     <div className="space-y-8">
       <SectionHeading
-        eyebrow="Plan recomendado"
-        title="Tu plan de compra"
-        description="La tienda que mejor combina cobertura y precio para tu compra pendiente."
+        eyebrow="Paso 2 de 2"
+        title="Resumen de tu compra"
+        description="El resumen consolidado: tienda recomendada, total y ahorro estimados, y productos incluidos."
         action={
           <Button asChild variant="outline">
             <Link href="/comparar">
-              <Scale /> Ver comparación
+              <ArrowLeft /> Volver a comparación
             </Link>
           </Button>
         }
@@ -95,9 +93,8 @@ export default function PlanRecomendadoPage() {
             <BadgeCheck /> Confirmar compra
           </Button>
           <Button variant="outline" onClick={savePlan}>
-            <Save /> Guardar plan
+            <Save /> Guardar como compra planificada
           </Button>
-          <SaveListDialog onSave={saveCurrentAsList} />
         </CardContent>
       </Card>
 
@@ -161,8 +158,6 @@ export default function PlanRecomendadoPage() {
           </div>
         </section>
       )}
-
-      <TransparencyNote />
 
       <ConfirmPurchaseDialog
         plan={confirming}

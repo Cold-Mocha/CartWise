@@ -16,6 +16,7 @@ export type StoreInfo = {
 
 export type Health = {
   ok: boolean;
+  scope?: "food" | "grocery" | "all" | string | null;
   counts: {
     stores: number;
     products: number;
@@ -33,14 +34,21 @@ export type SearchItem = {
   nombre: string;
   marca?: string | null;
   categoria?: string | null;
+  imagen_url?: string | null;
   n_tiendas?: number;
   precio_min?: number | null;
   precio_max?: number | null;
   diferencia?: number | null;
+  // Solo en ofertas por tienda (operación storeDeals): precio de lista y bandera
+  // de promoción real dentro de una misma cadena. No se usa en las diferencias
+  // entre supermercados.
+  precio_lista?: number | null;
+  oferta_real?: boolean | number | null;
   precio_unitario_min?: number | null;
   diferencia_unitaria?: number | null;
   precio_min_store_label?: string | null;
   precio_min_store_url?: string | null;
+  precio_min_url?: string | null;
   precio_min_disponible?: boolean | number | null;
   generico_id?: number | null;
   generico_nombre?: string | null;
@@ -57,8 +65,10 @@ export type BasketItem = SearchItem & {
   quantity: number;
 };
 
-export type CategoryDeals = {
-  categoria: string;
+// Mejores ofertas reales de una cadena en el snapshot (operación storeDeals).
+export type StoreDeals = {
+  store_key: string;
+  store_label: string;
   items: SearchItem[];
 };
 
@@ -71,6 +81,7 @@ export type StoreOffer = {
   url?: string | null;
   precio?: number | null;
   precio_lista?: number | null;
+  oferta_real?: boolean | number | null;
   disponible?: boolean | number | null;
   stock?: number | null;
   capturado_en?: string | null;
@@ -83,6 +94,7 @@ export type ProductOffers = {
     nombre: string;
     marca?: string | null;
     categoria?: string | null;
+    imagen_url?: string | null;
     generico_id?: number | null;
   } | null;
   offers: StoreOffer[];
@@ -95,6 +107,8 @@ export type CompareLine = {
   brand?: string | null;
   quantity: number;
   price: number | null;
+  listPrice?: number | null;
+  realOffer?: boolean | null;
   lineTotal: number | null;
   unitPrice?: number | null;
   unitBase?: string | null;

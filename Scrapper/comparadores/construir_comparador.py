@@ -19,11 +19,13 @@ Decisiones (ver discusión de diseño):
 Uso:  python3 -m comparadores.construir_comparador
 """
 from __future__ import annotations
+import argparse
 import os
 import re
 import sqlite3
 
 from comparadores.capa2 import build_capa2
+from scripts.comida import normalize_scope
 
 DATA_DIR = "datos"
 STAGING_DIR = os.path.join(DATA_DIR, "staging")
@@ -44,6 +46,10 @@ CREATE TABLE supermercado (
     plataforma TEXT,
     sitio_web TEXT
 );
+CREATE TABLE metadata (
+    clave TEXT PRIMARY KEY,
+    valor TEXT
+);
 -- Capa 1: producto único identificado por EAN
 CREATE TABLE producto_marca (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,6 +57,7 @@ CREATE TABLE producto_marca (
     nombre TEXT,
     marca TEXT,
     categoria TEXT,
+    imagen_url TEXT,
     gramaje_g INTEGER,
     cantidad TEXT,
     unidad TEXT,
@@ -73,6 +80,7 @@ CREATE TABLE oferta (
     url TEXT,
     precio INTEGER,
     precio_lista INTEGER,
+    oferta_real INTEGER DEFAULT 0,
     disponible INTEGER,
     stock INTEGER,
     capturado_en TEXT,
@@ -205,10 +213,22 @@ def read_nodo(db_path):
     con = sqlite3.connect(db_path)
     con.row_factory = sqlite3.Row
     snap = con.execute("SELECT MAX(id) FROM snapshot").fetchone()[0]
-    rows = con.execute("""
+    price_cols = {
+        row[1]
+        for row in con.execute("PRAGMA table_info(precio)").fetchall()
+    }
+    oferta_expr = (
+        "pr.oferta_real"
+        if "oferta_real" in price_cols
+        else "CASE WHEN pr.precio > 0 AND pr.precio_lista IS NOT NULL "
+             "AND pr.precio_lista > pr.precio THEN 1 ELSE 0 END"
+    )
+    rows = con.execute(f"""
         SELECT p.sku_tienda, p.ean, p.nombre, p.marca, p.categoria, p.url,
+               p.imagen_url,
                p.gramaje_g, p.cantidad, p.unidad,
-               pr.precio, pr.precio_lista, pr.disponible, pr.stock, pr.capturado_en
+               pr.precio, pr.precio_lista, {oferta_expr} AS oferta_real,
+               pr.disponible, pr.stock, pr.capturado_en
         FROM producto p JOIN precio pr ON pr.producto_id = p.id
         WHERE p.snapshot_id = ?""", (snap,)).fetchall()
     con.close()
@@ -235,13 +255,15 @@ def canonical_text(values, prefer_longest=False):
     return sorted(counts, key=lambda v: (-counts[v], -len(v), v.lower()))[0]
 
 
-def build():
+def build(scope: str = "food"):
+    scope = normalize_scope(scope)
     os.makedirs(COMPARADORES_DIR, exist_ok=True)
     if os.path.exists(OUT_DB):
         os.remove(OUT_DB)
     con = sqlite3.connect(OUT_DB)
     con.executescript(SCHEMA)
     cur = con.cursor()
+    cur.execute("INSERT INTO metadata(clave, valor) VALUES (?,?)", ("scope", scope))
 
     super_id = {}
     for nombre, meta in NODOS.items():
@@ -264,12 +286,15 @@ def build():
                 key = ("noean", nombre, r["sku_tienda"] or no_ean_seq)
 
             m = marcas.setdefault(key, {"ean": ean, "nombres": [], "marcas": [],
+                                        "imagenes": [],
                                         "categoria": None, "gramaje_g": None,
                                         "cantidad": None, "unidad": None})
             if r["nombre"]:
                 m["nombres"].append(r["nombre"])
             if r["marca"]:
                 m["marcas"].append(r["marca"])
+            if r["imagen_url"]:
+                m["imagenes"].append(r["imagen_url"])
             for f in ("categoria", "gramaje_g", "cantidad", "unidad"):
                 if m[f] is None and r[f] is not None:
                     m[f] = r[f]
@@ -283,10 +308,11 @@ def build():
     for key, m in marcas.items():
         nombre = canonical_text(m["nombres"], prefer_longest=True)
         marca = canonical_text(m["marcas"])
+        imagen_url = canonical_text(m["imagenes"])
         cur.execute("""INSERT INTO producto_marca
-            (ean, nombre, marca, categoria, gramaje_g, cantidad, unidad)
-            VALUES (?,?,?,?,?,?,?)""",
-            (m["ean"], nombre, marca, m["categoria"], m["gramaje_g"],
+            (ean, nombre, marca, categoria, imagen_url, gramaje_g, cantidad, unidad)
+            VALUES (?,?,?,?,?,?,?,?)""",
+            (m["ean"], nombre, marca, m["categoria"], imagen_url, m["gramaje_g"],
              m["cantidad"], m["unidad"]))
         pm_id[key] = cur.lastrowid
 
@@ -294,23 +320,24 @@ def build():
     for (key, tienda), r in ofertas.items():
         cur.execute("""INSERT INTO oferta
             (producto_marca_id, supermercado_id, sku_tienda, url, precio,
-             precio_lista, disponible, stock, capturado_en)
-            VALUES (?,?,?,?,?,?,?,?,?)""",
+             precio_lista, oferta_real, disponible, stock, capturado_en)
+            VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (pm_id[key], super_id[tienda], r["sku_tienda"], r["url"], r["precio"],
-             r["precio_lista"], r["disponible"], r["stock"], r["capturado_en"]))
+             r["precio_lista"], r["oferta_real"], r["disponible"], r["stock"],
+             r["capturado_en"]))
 
     con.commit()
-    capa2_stats = build_capa2(con)
-    _resumen(con)
+    capa2_stats = build_capa2(con, scope=scope)
+    _resumen(con, scope)
     _resumen_capa2(con, capa2_stats)
     con.close()
 
 
-def _resumen(con):
+def _resumen(con, scope):
     cur = con.cursor()
     def s(q): return cur.execute(q).fetchone()[0]
     print("=" * 56)
-    print("  COMPARADOR construido (Capa 1: matching por EAN)")
+    print(f"  COMPARADOR construido (scope={scope}, Capa 1: matching por EAN)")
     print("=" * 56)
     print(f"  productos únicos (producto_marca): {s('SELECT COUNT(*) FROM producto_marca')}")
     print(f"    con EAN                        : {s('SELECT COUNT(*) FROM producto_marca WHERE ean IS NOT NULL')}")
@@ -351,4 +378,7 @@ def _resumen_capa2(con, stats):
 
 
 if __name__ == "__main__":
-    build()
+    ap = argparse.ArgumentParser(description="Construye comparador.sqlite")
+    ap.add_argument("--scope", choices=("food", "grocery", "all"), default="food")
+    args = ap.parse_args()
+    build(scope=args.scope)
