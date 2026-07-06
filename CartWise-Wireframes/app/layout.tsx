@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
-import { AppStateProvider } from "@/components/state/app-state";
+import { AppProviders } from "@/components/state/app-providers";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -21,10 +21,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es" className={manrope.variable}>
       <body>
-        <AppStateProvider>
+        <AppProviders>
           {children}
           <Toaster richColors position="top-center" />
-        </AppStateProvider>
+        </AppProviders>
       </body>
     </html>
   );

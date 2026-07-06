@@ -54,3 +54,9 @@ export function isStrongDifference(item: SearchItem) {
   const pct = strongDifferencePct(item);
   return pct !== null && pct >= STRONG_DIFF_THRESHOLD;
 }
+
+// Orden de vitrinas: productos con foto real primero (los sin EAN muestran un
+// ícono referencial). Orden estable: no altera el orden relativo interno.
+export function sortImageFirst<T extends { ean?: string | null }>(items: T[]): T[] {
+  return [...items].sort((a, b) => Number(Boolean(b.ean)) - Number(Boolean(a.ean)));
+}

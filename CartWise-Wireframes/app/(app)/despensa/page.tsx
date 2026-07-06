@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ShoppingBasket, Minus, Plus, CheckCheck, Truck, Hand, Search, Store } from "lucide-react";
-import { useAppState } from "@/components/state/app-state";
+import { usePantry } from "@/components/state/pantry-provider";
+import { usePendingPurchase } from "@/components/state/pending-purchase-provider";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
 import { StoreLogo } from "@/components/brand/store-logo";
@@ -16,7 +17,8 @@ import { normalizeText } from "@/lib/text";
 import type { PantryItem, SearchItem } from "@/types/cartwise";
 
 export default function DespensaPage() {
-  const { pantry, updatePantryQuantity, consumePantryItem, addToBasket } = useAppState();
+  const { pantry, updatePantryQuantity, consumePantryItem } = usePantry();
+  const { addToBasket } = usePendingPurchase();
   const [search, setSearch] = useState("");
 
   const addButton = (

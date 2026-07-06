@@ -24,7 +24,9 @@ export function currentMonthLabel() {
 
 export function shortDate(iso?: string) {
   if (!iso) return "";
-  const d = new Date(iso);
+  // Las fechas sin hora ("YYYY-MM-DD") se interpretan como día local: parsear
+  // con new Date() las tomaría como medianoche UTC y en Chile restaría un día.
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`) : new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });
 }

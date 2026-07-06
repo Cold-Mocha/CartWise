@@ -42,7 +42,10 @@ export function PlanDetailDialog({ plan, onClose }: { plan: SavedPlan | null; on
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-foreground">{line.name}</p>
-                  <p className="text-xs text-muted-foreground">×{line.quantity}</p>
+                  <p className="text-xs text-muted-foreground">
+                    ×{line.quantity}
+                    {line.storeLabel ? ` · en ${line.storeLabel}` : ""}
+                  </p>
                 </div>
                 {line.price != null ? (
                   <span className="flex items-center gap-2">

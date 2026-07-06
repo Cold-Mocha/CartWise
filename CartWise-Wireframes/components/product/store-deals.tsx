@@ -1,107 +1,52 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StoreLogo } from "@/components/brand/store-logo";
-import { ProductImage } from "@/components/product/product-image";
+import { DealsRow } from "./browse-deals";
 import { getStoreDeals } from "@/lib/api";
+import { sortImageFirst } from "@/lib/basket";
 import { generalCategory } from "@/lib/categories";
-import { money } from "@/lib/format";
 import type { SearchItem, StoreDeals } from "@/types/cartwise";
 
 /*
-  Ofertas reales por supermercado en una grilla 2x2 (una tarjeta por cadena).
-  Cada tarjeta muestra las mejores promociones de esa tienda en el snapshot:
-  precio de lista tachado + precio de oferta + % de descuento. Es distinto de
-  "Diferencias destacadas": aquí el descuento es DENTRO de la misma cadena
-  (oferta_real), no la brecha entre supermercados. No inventa datos.
+  Ofertas reales por supermercado: una sección por cadena (logo + nombre en el
+  título) con sus mejores promociones del snapshot en una fila desplazable, con
+  la misma tarjeta de producto de la guía /style. El descuento aquí es DENTRO
+  de la misma cadena (oferta_real), no la brecha entre supermercados. No
+  inventa datos.
 */
 
-const PER_STORE_SHOWN = 4;
+const PER_STORE_SHOWN = 12;
 
-function OfferRow({ item, onOpenDetail }: { item: SearchItem; onOpenDetail: (item: SearchItem) => void }) {
-  const lista = item.precio_lista ?? 0;
-  const precio = item.precio_min ?? 0;
-  const pct = lista > precio && lista > 0 ? Math.round(((lista - precio) / lista) * 100) : 0;
-
-  return (
-    <button
-      type="button"
-      onClick={() => onOpenDetail(item)}
-      className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-muted"
-      aria-label={`Ver detalle de ${item.nombre}`}
-    >
-      <div className="size-11 shrink-0 rounded-md bg-white p-1">
-        <ProductImage ean={item.ean} alt={item.nombre} category={item.categoria} className="h-full w-full" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="line-clamp-1 text-sm font-semibold text-foreground">{item.nombre}</p>
-        <p className="flex items-baseline gap-1.5">
-          <span className="cw-price text-sm font-extrabold text-foreground">{money(precio)}</span>
-          {pct > 0 && (
-            <span className="cw-price text-xs text-muted-foreground line-through">{money(lista)}</span>
-          )}
-        </p>
-      </div>
-      {pct > 0 && <Badge variant="savings" className="shrink-0">-{pct}%</Badge>}
-    </button>
-  );
+// Solo comida/aseo (excluye alcohol) y una oferta por categoría granular para
+// dar variedad (evita 4 jabones Dove casi idénticos); con foto primero.
+function pickItems(store: StoreDeals): SearchItem[] {
+  const seen = new Set<string>();
+  const out: SearchItem[] = [];
+  for (const it of sortImageFirst(store.items)) {
+    if (!generalCategory(it.categoria)) continue;
+    const key = (it.categoria ?? "").toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+    if (out.length >= PER_STORE_SHOWN) break;
+  }
+  return out;
 }
 
-function StoreCard({
-  store,
+export function StoreDealsSection({
+  onAdd,
   onOpenDetail,
 }: {
-  store: StoreDeals;
+  onAdd: (item: SearchItem) => void;
   onOpenDetail: (item: SearchItem) => void;
 }) {
-  // Solo comida/aseo (excluye alcohol) y una oferta por categoría granular para
-  // dar variedad (evita 4 jabones Dove casi idénticos).
-  const items = useMemo(() => {
-    const seen = new Set<string>();
-    const out: SearchItem[] = [];
-    for (const it of store.items) {
-      if (!generalCategory(it.categoria)) continue;
-      const key = (it.categoria ?? "").toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(it);
-      if (out.length >= PER_STORE_SHOWN) break;
-    }
-    return out;
-  }, [store.items]);
-
-  return (
-    <Card>
-      <CardContent className="flex h-full flex-col gap-2 p-4">
-        <div className="flex items-center gap-2 border-b border-border pb-2">
-          <StoreLogo name={store.store_label} size={28} />
-          <p className="font-extrabold tracking-tight text-foreground">{store.store_label}</p>
-        </div>
-        {items.length ? (
-          <div className="flex flex-col">
-            {items.map((item) => (
-              <OfferRow key={item.id} item={item} onOpenDetail={onOpenDetail} />
-            ))}
-          </div>
-        ) : (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            Sin ofertas en este snapshot.
-          </p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-export function StoreDealsSection({ onOpenDetail }: { onOpenDetail: (item: SearchItem) => void }) {
   const [stores, setStores] = useState<StoreDeals[] | null>(null);
 
   useEffect(() => {
     let active = true;
-    getStoreDeals(16)
+    getStoreDeals(40)
       .then((data) => active && setStores(data))
       .catch(() => active && setStores([]));
     return () => {
@@ -109,30 +54,49 @@ export function StoreDealsSection({ onOpenDetail }: { onOpenDetail: (item: Searc
     };
   }, []);
 
+  const sections = useMemo(
+    () =>
+      (stores ?? [])
+        .map((store) => ({ store, items: pickItems(store) }))
+        .filter((s) => s.items.length > 0),
+    [stores],
+  );
+
   if (!stores) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-64 w-full rounded-lg" />
+      <div className="space-y-10">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="space-y-4">
+            <Skeleton className="h-9 w-64" />
+            <div className="flex gap-4 overflow-hidden">
+              {Array.from({ length: 5 }).map((_, j) => (
+                <Skeleton key={j} className="h-72 w-[45%] shrink-0 rounded-xl sm:w-[31%] lg:w-[19%]" />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     );
   }
 
-  const withOffers = stores.filter((s) => s.items.some((i) => generalCategory(i.categoria)));
-
-  if (!withOffers.length) {
+  if (!sections.length) {
     return (
-      <p className="rounded-lg border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
+      <p className="rounded-xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
         Sin ofertas temporales en este snapshot.
       </p>
     );
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      {withOffers.map((store) => (
-        <StoreCard key={store.store_key} store={store} onOpenDetail={onOpenDetail} />
+    <div className="space-y-10">
+      {sections.map(({ store, items }) => (
+        <section key={store.store_key} className="space-y-4">
+          <h3 className="flex items-center gap-3 text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
+            <StoreLogo name={store.store_label} size={36} className="shrink-0" />
+            {store.store_label}
+          </h3>
+          <DealsRow items={items} onAdd={onAdd} onOpenDetail={onOpenDetail} />
+        </section>
       ))}
     </div>
   );

@@ -20,7 +20,7 @@ export function Logo({ size = 34, withWordmark = true, className }: { size?: num
         </svg>
       </span>
       {withWordmark && (
-        <span className="text-xl font-extrabold tracking-tight text-foreground">
+        <span className="text-2xl font-extrabold tracking-tight text-foreground">
           Cart<span className="text-primary">wise</span>
         </span>
       )}

@@ -1,20 +1,20 @@
 "use client";
 
-import { Plus, Store, TrendingDown } from "lucide-react";
+import { Percent, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "./product-image";
-import { money } from "@/lib/format";
-import { isStrongDifference } from "@/lib/basket";
+import { ProductPriceBlock } from "./price-block";
 import { cn } from "@/lib/utils";
 import type { SearchItem } from "@/types/cartwise";
 
 /*
-  Card comercial de producto para el catálogo, estilo supermercado online.
-  Jerarquía: imagen → nombre → categoría/marca → PRECIO destacado → tienda con
-  mejor precio. Dos acciones: "Añadir directo" (agrega de inmediato) y "Ver
-  precios y agregar" (abre el detalle con precios por tienda). Los precios NO se
-  muestran al pasar el cursor: solo al abrir el detalle.
+  Tarjeta de producto de la app con la anatomía de la guía /style (la misma de
+  la landing): imagen centrada sobre blanco, nombre en dos líneas, bloque de
+  precios compartido (ProductPriceBlock), badge circular de % SOLO con oferta
+  temporal real (oferta_real) y botón verde de ancho completo. La imagen y el
+  nombre abren el detalle con los precios por tienda; el botón agrega a la
+  compra pendiente.
 */
 export function ProductCard({
   item,
@@ -29,93 +29,65 @@ export function ProductCard({
   tags?: string[];
   className?: string;
 }) {
-  const comparable = (item.n_tiendas ?? 0) >= 2;
-  const strongDiff = isStrongDifference(item);
+  const openDetail = onOpenDetail ? () => onOpenDetail(item) : undefined;
+  const esOfertaTemporal = Boolean(item.oferta_real);
 
   return (
     <article
       className={cn(
-        "group flex h-full flex-col rounded-lg border border-border bg-card transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg",
+        "group relative flex h-full flex-col items-center gap-3 rounded-xl border border-border bg-card p-5 pt-6 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg",
         className,
       )}
     >
-      <button
-        type="button"
-        onClick={onOpenDetail ? () => onOpenDetail(item) : undefined}
-        className="relative block aspect-square w-full overflow-hidden rounded-t-lg bg-white p-4"
-        aria-label={`Ver detalle de ${item.nombre}`}
-      >
-        <ProductImage ean={item.ean} alt={item.nombre} category={item.categoria} className="h-full w-full" />
-        <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
-          {strongDiff && (
-            <Badge variant="savings" className="shadow-sm">
-              <TrendingDown className="size-3" /> Destacado
-            </Badge>
-          )}
+      {esOfertaTemporal && (
+        <span
+          className="absolute -right-2.5 -top-2.5 z-10 flex size-9 items-center justify-center rounded-full bg-red-600 text-white shadow-md"
+          title="Oferta temporal en la tienda más barata"
+        >
+          <Percent className="size-4" />
+        </span>
+      )}
+
+      {tags.length > 0 && (
+        <div className="absolute left-2 top-2 z-10 flex flex-col items-start gap-1">
           {tags.map((tag) => (
             <Badge key={tag} variant="muted" className="shadow-sm">
               {tag}
             </Badge>
           ))}
         </div>
+      )}
+
+      <button
+        type="button"
+        onClick={openDetail}
+        className="flex h-28 w-full items-center justify-center rounded-lg bg-white p-2"
+        aria-label={`Ver detalle de ${item.nombre}`}
+      >
+        <ProductImage ean={item.ean} alt={item.nombre} category={item.categoria} className="h-full w-full" />
       </button>
 
-      <div className="flex flex-1 flex-col gap-2 p-4 pt-3">
-        <div className="min-h-[3.1rem]">
-          <button
-            type="button"
-            onClick={onOpenDetail ? () => onOpenDetail(item) : undefined}
-            className="block text-left"
-          >
-            <h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground hover:text-primary">
-              {item.nombre}
-            </h3>
-          </button>
-          <p className="truncate text-xs text-muted-foreground">
-            {[item.marca, item.categoria].filter(Boolean).join(" · ") || "Producto"}
-          </p>
-        </div>
+      <button type="button" onClick={openDetail} className="block w-full">
+        <h3 className="line-clamp-2 min-h-10 text-sm font-bold leading-snug text-foreground group-hover:text-primary">
+          {item.nombre}
+        </h3>
+      </button>
 
-        <div className="mt-auto space-y-1">
-          {comparable && item.precio_min != null ? (
-            <>
-              <div className="flex items-baseline gap-2">
-                <span className="cw-price text-xl font-extrabold text-foreground">
-                  {money(item.precio_min)}
-                </span>
-                {strongDiff && item.diferencia != null && item.diferencia > 0 && (
-                  <span className="text-xs font-bold text-savings">hasta -{money(item.diferencia)}</span>
-                )}
-              </div>
-              {item.precio_min_store_label && (
-                <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Store className="size-3" /> Más barato en{" "}
-                  <span className="font-semibold text-foreground">{item.precio_min_store_label}</span>
-                </p>
-              )}
-            </>
-          ) : item.precio_min != null ? (
-            <div className="flex items-baseline gap-2">
-              <span className="cw-price text-xl font-extrabold text-foreground">
-                {money(item.precio_min)}
-              </span>
-              <span className="text-xs text-muted-foreground">en una tienda</span>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Sin precio disponible.</p>
-          )}
-        </div>
+      {/* Centrado verticalmente en el espacio libre entre nombre y botones,
+          para que las tarjetas de una misma fila queden parejas. */}
+      <div className="flex w-full flex-1 items-center justify-center">
+        <ProductPriceBlock item={item} />
+      </div>
 
-        <div className="mt-1 flex gap-1.5">
-          <Button size="sm" className="flex-1" onClick={() => onAdd(item)}>
-            <Plus /> Añadir directo
+      <div className="mt-auto w-full space-y-1.5 pt-1">
+        <Button size="sm" className="w-full" onClick={() => onAdd(item)}>
+          <Plus /> Agregar a la compra
+        </Button>
+        {onOpenDetail && (
+          <Button size="sm" variant="outline" className="w-full" onClick={openDetail}>
+            Ver precios
           </Button>
-          {onOpenDetail && (
-            <Button size="sm" variant="outline" className="flex-1" onClick={() => onOpenDetail(item)}>
-              Ver precios
-            </Button>
-          )}
-        </div>
+        )}
       </div>
     </article>
   );

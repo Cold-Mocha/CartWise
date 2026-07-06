@@ -17,6 +17,8 @@ export type StoreInfo = {
 export type Health = {
   ok: boolean;
   scope?: "food" | "grocery" | "all" | string | null;
+  // Fecha (YYYY-MM-DD) de la captura más reciente del mart.
+  snapshot?: string | null;
   counts: {
     stores: number;
     products: number;
@@ -39,9 +41,9 @@ export type SearchItem = {
   precio_min?: number | null;
   precio_max?: number | null;
   diferencia?: number | null;
-  // Solo en ofertas por tienda (operación storeDeals): precio de lista y bandera
-  // de promoción real dentro de una misma cadena. No se usa en las diferencias
-  // entre supermercados.
+  // Precio de lista y bandera de promoción real dentro de una misma cadena.
+  // En storeDeals describen la oferta de esa tienda; en strongDeals describen
+  // la oferta de la tienda más barata (para marcar "oferta temporal" real).
   precio_lista?: number | null;
   oferta_real?: boolean | number | null;
   precio_unitario_min?: number | null;
@@ -63,6 +65,12 @@ export type SearchItem = {
 
 export type BasketItem = SearchItem & {
   quantity: number;
+};
+
+// Marcas reales del catálogo comparable para poblar el filtro de marca
+// (operación catalogFacets: las más frecuentes, en orden alfabético).
+export type CatalogFacets = {
+  brands: string[];
 };
 
 // Mejores ofertas reales de una cadena en el snapshot (operación storeDeals).
@@ -133,6 +141,14 @@ export type BasketComparison = {
   stores: StoreComparison[];
   recommendedStore: StoreComparison | null;
   estimatedSavings: number;
+  // Fecha (YYYY-MM-DD) del snapshot que respalda esta comparación.
+  snapshot?: string | null;
+};
+
+// Línea de un plan guardado: la línea comparada más la tienda que el usuario
+// asignó al crear el plan (anotación del frontend, no viene del bridge).
+export type PlannedLine = CompareLine & {
+  storeLabel?: string | null;
 };
 
 export type SavedPlan = {
@@ -146,7 +162,7 @@ export type SavedPlan = {
   savings: number;
   status?: PlanStatus;
   lines?: BasketItem[];
-  recommendedLines?: CompareLine[];
+  recommendedLines?: PlannedLine[];
 };
 
 export type ConfirmedPurchaseItem = {
@@ -154,6 +170,11 @@ export type ConfirmedPurchaseItem = {
   quantity: number;
   category?: string | null;
   paidPrice?: number | null;
+  // EAN del producto encontrado, para mostrar su imagen en el historial.
+  ean?: string | null;
+  // Tienda donde se compró: la planificada, confirmada por el usuario al
+  // marcar que sí lo encontró ahí.
+  store?: string | null;
 };
 
 export type ConfirmedPurchase = {

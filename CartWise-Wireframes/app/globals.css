@@ -1,4 +1,8 @@
 @import "tailwindcss";
+/* Clases animate-in/out, slide-in-*, fade-*, zoom-* que usan los componentes
+   (Sheet, Dialog, Select…). Tailwind v4 no las trae; sin este plugin los
+   paneles aparecían de golpe. */
+@import "tw-animate-css";
 
 /*
   Cartwise — sistema visual "supermercado online en blanco y verde".

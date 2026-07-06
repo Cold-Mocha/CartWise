@@ -2,111 +2,69 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Menu, Search, ShoppingCart } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-  SheetClose,
-} from "@/components/ui/sheet";
-import { useAppState } from "@/components/state/app-state";
+import { useSession } from "@/components/state/session-provider";
+import { CartSheet } from "./cart-sheet";
+import { HeaderSearch } from "./header-search";
 import { NAV_ITEMS } from "./nav-items";
 import { cn } from "@/lib/utils";
 
+// Toda la navegación vive en el header (sin menú lateral): íconos siempre
+// visibles y etiquetas desde lg. El logo lleva al dashboard.
+const HEADER_NAV = NAV_ITEMS.filter((item) => item.href !== "/dashboard");
+
 export function AppHeader() {
   const pathname = usePathname();
-  const { basketUnits, logout } = useAppState();
+  const { logout } = useSession();
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
-        {/* Menú móvil */}
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Abrir menú">
-              <Menu />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-72">
-            <SheetHeader>
-              <SheetTitle>
-                <Logo />
-              </SheetTitle>
-            </SheetHeader>
-            <nav className="mt-2 flex flex-col gap-1">
-              {NAV_ITEMS.map((item) => (
-                <SheetClose asChild key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors",
-                      isActive(item.href)
-                        ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-accent",
-                    )}
-                  >
-                    <item.icon className="size-4" /> {item.label}
-                  </Link>
-                </SheetClose>
-              ))}
-            </nav>
-          </SheetContent>
-        </Sheet>
-
-        <Link href="/dashboard" aria-label="Cartwise — inicio">
-          <Logo />
+      <div className="mx-auto flex h-20 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:gap-4">
+        <Link href="/dashboard" aria-label="Cartwise — inicio" className="shrink-0">
+          <Logo size={46} className="max-sm:hidden" />
+          <Logo size={40} withWordmark={false} className="sm:hidden" />
         </Link>
 
-        <nav className="ml-4 hidden items-center gap-1 lg:flex">
-          {NAV_ITEMS.map((item) => (
+        {/* Buscador global con autosugerencias (estilo Lider): crece más que
+            la nav para quedar largo, con tope en max-w-2xl */}
+        <HeaderSearch className="min-w-0 max-w-2xl flex-[3]" />
+
+        {/* Navegación mínima, centrada entre el buscador y el carrito */}
+        <nav className="flex flex-1 items-center justify-center gap-0.5 lg:gap-1">
+          {HEADER_NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
+              aria-label={item.label}
+              title={item.label}
               className={cn(
-                "rounded-md px-3 py-2 text-sm font-semibold transition-colors",
-                isActive(item.href) ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground",
+                "flex items-center gap-2 rounded-md px-2.5 py-2.5 text-sm font-semibold transition-colors",
+                isActive(item.href)
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {item.label}
+              <item.icon className="size-5" />
+              <span className="hidden whitespace-nowrap lg:inline">{item.label}</span>
             </Link>
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-1.5">
-          <Button asChild variant="ghost" size="icon" aria-label="Buscar productos">
-            <Link href="/productos">
-              <Search />
-            </Link>
-          </Button>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {/* Carrito lateral con las líneas de la compra pendiente */}
+          <CartSheet />
 
           <Button
-            asChild
-            variant={basketUnits > 0 ? "default" : "outline"}
-            className="relative gap-2 transition-colors"
+            variant="destructive"
+            size="icon"
+            onClick={logout}
+            aria-label="Cerrar sesión"
+            className="size-11 rounded-lg [&_svg]:size-6"
           >
-            <Link href="/compra-pendiente" aria-label="Ver compra pendiente">
-              <ShoppingCart className="size-4" />
-              <span className="hidden sm:inline">Compra pendiente</span>
-              {basketUnits > 0 && (
-                <Badge
-                  key={basketUnits}
-                  variant="savings"
-                  className="cw-pop ml-0.5 rounded-full bg-primary-foreground px-1.5 py-0 text-[11px] text-primary"
-                >
-                  {basketUnits}
-                </Badge>
-              )}
-            </Link>
-          </Button>
-
-          <Button variant="ghost" size="icon" onClick={logout} aria-label="Salir de la demo">
             <LogOut />
           </Button>
         </div>

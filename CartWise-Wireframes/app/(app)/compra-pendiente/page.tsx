@@ -12,7 +12,9 @@ import {
   RotateCcw,
   Search,
 } from "lucide-react";
-import { useAppState } from "@/components/state/app-state";
+import { usePendingPurchase } from "@/components/state/pending-purchase-provider";
+import { useComparison } from "@/components/state/comparison-provider";
+import { usePantry } from "@/components/state/pantry-provider";
 import { ProductImage } from "@/components/product/product-image";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
@@ -32,11 +34,9 @@ export default function CompraPendientePage() {
     removeFromBasket,
     setBasket,
     clearBasket,
-    switchToGeneric,
-    compareItems,
-    comparing,
-    pantry,
-  } = useAppState();
+  } = usePendingPurchase();
+  const { compareItems, comparing } = useComparison();
+  const { pantry } = usePantry();
 
   // Eliminación temporal: el producto quitado queda en gris con opción de
   // restaurar. Se elimina definitivamente al salir de la página (estado local).
@@ -66,10 +66,10 @@ export default function CompraPendientePage() {
   if (basket.length === 0 && removed.length === 0) {
     return (
       <div className="space-y-6">
-        <SectionHeading eyebrow="Tu carrito" title="Compra pendiente" />
+        <SectionHeading title="Carrito" />
         <EmptyState
           icon={ShoppingBasket}
-          title="Tu compra pendiente está vacía"
+          title="Tu carrito está vacío"
           description="Busca productos y agrégalos para comparar supermercados."
           action={
             <Button asChild>
@@ -86,9 +86,7 @@ export default function CompraPendientePage() {
   return (
     <div className="space-y-6">
       <SectionHeading
-        eyebrow="Tu carrito"
-        title="Compra pendiente"
-        description={`${plural(basket.length, "producto")} · ${plural(basketUnits, "unidad", "unidades")}`}
+        title="Carrito"
         action={
           basket.length > 0 && (
             <Button variant="ghost" size="sm" onClick={clearBasket} className="text-destructive">
@@ -111,7 +109,6 @@ export default function CompraPendientePage() {
                 onInc={() => updateQuantity(item, item.quantity + 1)}
                 onDec={() => updateQuantity(item, item.quantity - 1)}
                 onRemove={() => removeWithUndo(item)}
-                onSwitch={item.kind === "product" && item.generico_id ? () => switchToGeneric(item) : undefined}
               />
             );
           })}
@@ -157,8 +154,8 @@ export default function CompraPendientePage() {
                 </div>
                 <Separator />
                 <div className="flex items-baseline justify-between">
-                  <span className="text-muted-foreground">Desde (mejor precio)</span>
-                  <span className="cw-price text-xl font-extrabold text-foreground">{money(estimatedMin)}</span>
+                  <span className="text-muted-foreground">Total desde mejor precio:</span>
+                  <span className="cw-price text-xl font-extrabold text-primary">{money(estimatedMin)}</span>
                 </div>
                 {withoutPrice > 0 && (
                   <p className="inline-flex items-center gap-1.5 text-xs text-destructive">
@@ -171,7 +168,11 @@ export default function CompraPendientePage() {
               <Button
                 className="w-full"
                 size="lg"
-                onClick={() => compareItems(basket)}
+                onClick={async () => {
+                  // El carrito se reinicia al generar la comparación: sus
+                  // productos pasan a vivir en la matriz de /comparar.
+                  if (await compareItems(basket)) setBasket([]);
+                }}
                 disabled={comparing || basket.length === 0}
               >
                 <Scale /> {comparing ? "Comparando…" : "Comparar supermercados"}

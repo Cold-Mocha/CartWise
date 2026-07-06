@@ -1,21 +1,20 @@
-"use client";
-
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button, type ButtonProps } from "@/components/ui/button";
-import { useAppState } from "@/components/state/app-state";
 
-// Botón "Entrar como demo". No autentica de verdad: marca la sesión demo y entra
-// al dashboard (plan §13.2).
+// CTA de acceso: lleva al login, que valida las credenciales fijas de la demo
+// antes de abrir el dashboard (plan §13.2). La UI lo presenta como login normal.
 export function LandingCta({
-  children = "Entrar como demo",
+  children = "Iniciar sesión",
   withArrow = true,
   ...props
 }: ButtonProps & { withArrow?: boolean }) {
-  const { loginDemo } = useAppState();
   return (
-    <Button onClick={loginDemo} {...props}>
-      {children}
-      {withArrow && <ArrowRight />}
+    <Button asChild {...props}>
+      <Link href="/login">
+        {children}
+        {withArrow && <ArrowRight />}
+      </Link>
     </Button>
   );
 }

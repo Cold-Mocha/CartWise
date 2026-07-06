@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useAppState } from "@/components/state/app-state";
+import { useSession } from "@/components/state/session-provider";
 import { loadJson, saveJson } from "@/lib/storage";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -49,17 +49,17 @@ const STEPS = [
   {
     icon: Bookmark,
     title: "Planifica y organiza",
-    text: "Guarda una compra como planificada para retomarla luego y usa la despensa para llevar el control de lo que ya tienes en casa.",
+    text: "Al confirmar tu plan se crea una compra pendiente en Compras, y la despensa lleva el control de lo que ya tienes en casa.",
   },
   {
     icon: BadgeCheck,
     title: "Confirma tu compra",
-    text: "Al confirmar una compra registras el gasto del mes y vuelves al Inicio con todo actualizado.",
+    text: "Cuando compres, confirma la compra pendiente: dinos cuánto pagaste y qué productos encontraste, y pasará al historial.",
   },
 ];
 
 export function OnboardingTour() {
-  const { hydrated, isAuthenticated } = useAppState();
+  const { hydrated, isAuthenticated } = useSession();
   const [open, setOpen] = React.useState(false);
   const [step, setStep] = React.useState(0);
 

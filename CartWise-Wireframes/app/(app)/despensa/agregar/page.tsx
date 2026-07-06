@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Minus, Search, Check, X, ArrowLeft, ShoppingBasket } from "lucide-react";
-import { useAppState } from "@/components/state/app-state";
+import { usePantry } from "@/components/state/pantry-provider";
 import { SectionHeading } from "@/components/common/section-heading";
 import { ProductImage } from "@/components/product/product-image";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import type { SearchItem } from "@/types/cartwise";
 */
 export default function AgregarDespensaPage() {
   const router = useRouter();
-  const { addProductsToPantry } = useAppState();
+  const { addProductsToPantry } = usePantry();
 
   const [query, setQuery] = useState("");
   const [term, setTerm] = useState("");
@@ -107,13 +107,13 @@ export default function AgregarDespensaPage() {
 
           <div className="space-y-2">
             {term.length < 2 ? (
-              <p className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+              <p className="rounded-xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
                 Escribe para buscar productos del catálogo.
               </p>
             ) : loading ? (
               Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)
             ) : results.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+              <p className="rounded-xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
                 Sin resultados.
               </p>
             ) : (

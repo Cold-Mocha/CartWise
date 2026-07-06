@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, SlidersHorizontal, PackageSearch, X } from "lucide-react";
-import { useAppState } from "@/components/state/app-state";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { SlidersHorizontal, PackageSearch } from "lucide-react";
+import { usePendingPurchase } from "@/components/state/pending-purchase-provider";
+import { usePurchaseHistory } from "@/components/state/purchase-history-provider";
+import { usePantry } from "@/components/state/pantry-provider";
 import { ProductCard } from "@/components/product/product-card";
 import { ProductDetailDialog } from "@/components/product/product-detail-dialog";
 import { BrowseDeals } from "@/components/product/browse-deals";
-import { ProductImage } from "@/components/product/product-image";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -18,9 +19,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { searchExactProducts, searchGenericProducts } from "@/lib/api";
-import { isStrongDifference } from "@/lib/basket";
-import { generalCategory, type GeneralCategory } from "@/lib/categories";
+import { getCatalogFacets, getStrongDeals, searchExactProducts } from "@/lib/api";
+import { isStrongDifference, sortImageFirst } from "@/lib/basket";
+import { generalCategory, GENERAL_CATEGORY_ORDER } from "@/lib/categories";
 import { normalizeText } from "@/lib/text";
 import { money } from "@/lib/format";
 import { COVERED_STORES } from "@/lib/constants";
@@ -29,15 +30,44 @@ import type { SearchItem } from "@/types/cartwise";
 
 const ALL = "__all__";
 
+// useSearchParams exige un límite de Suspense al prerenderizar.
 export default function ProductosPage() {
-  const { addToBasket, confirmed, pantry } = useAppState();
-  const [query, setQuery] = useState("");
-  const [term, setTerm] = useState("");
+  return (
+    <Suspense
+      fallback={
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-72 w-full rounded-xl" />
+          ))}
+        </div>
+      }
+    >
+      <ProductosContent />
+    </Suspense>
+  );
+}
+
+function ProductosContent() {
+  const { addToBasket } = usePendingPurchase();
+  const { confirmed } = usePurchaseHistory();
+  const { pantry } = usePantry();
+
+  // El término viene del buscador global del header vía la URL (?q=…).
+  const searchParams = useSearchParams();
+  const term = (searchParams.get("q") ?? "").trim();
+  const hasSearch = term.length >= 2;
+
   const [results, setResults] = useState<SearchItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<SearchItem | null>(null);
-  const [suggestOpen, setSuggestOpen] = useState(false);
+
+  // Catálogo de exploración (diferencias destacadas) cuando no hay búsqueda.
+  const [browse, setBrowse] = useState<SearchItem[] | null>(null);
+  const [browseError, setBrowseError] = useState(false);
+
+  // Marcas reales del catálogo comparable (para el filtro de marca).
+  const [catalogBrands, setCatalogBrands] = useState<string[]>([]);
 
   // Filtros estilo supermercado.
   const [minPrice, setMinPrice] = useState<number | null>(null);
@@ -59,24 +89,22 @@ export default function ProductosPage() {
     () => new Set(pantry.map((p) => normalizeText(p.productName))),
     [pantry],
   );
-  const purchasedCategories = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          confirmed.flatMap((c) => c.items.map((i) => i.category).filter(Boolean) as string[]),
-        ),
-      ),
-    [confirmed],
-  );
-
-  // Debounce de la búsqueda.
-  useEffect(() => {
-    const t = setTimeout(() => setTerm(query.trim()), 250);
-    return () => clearTimeout(t);
-  }, [query]);
 
   useEffect(() => {
-    if (term.length < 2) {
+    let active = true;
+    getStrongDeals(400)
+      .then((items) => active && setBrowse(items))
+      .catch(() => active && setBrowseError(true));
+    getCatalogFacets()
+      .then((facets) => active && setCatalogBrands(facets.brands))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasSearch) {
       setResults([]);
       setError(null);
       setLoading(false);
@@ -85,10 +113,11 @@ export default function ProductosPage() {
     const id = ++reqId.current;
     setLoading(true);
     setError(null);
-    Promise.all([searchExactProducts(term, 24), searchGenericProducts(term, 12)])
-      .then(([exact, generic]) => {
+    // Solo productos exactos: la comparación por unidad quedó fuera del flujo.
+    searchExactProducts(term, 36)
+      .then((exact) => {
         if (id !== reqId.current) return;
-        setResults([...exact, ...generic]);
+        setResults(sortImageFirst(exact));
       })
       .catch((e) => {
         if (id !== reqId.current) return;
@@ -97,7 +126,7 @@ export default function ProductosPage() {
       .finally(() => {
         if (id === reqId.current) setLoading(false);
       });
-  }, [term]);
+  }, [term, hasSearch]);
 
   const tagsFor = (item: SearchItem) => {
     const t: string[] = [];
@@ -106,32 +135,30 @@ export default function ProductosPage() {
     return t;
   };
 
-  const brandOptions = useMemo(
-    () => Array.from(new Set(results.map((r) => r.marca).filter(Boolean) as string[])).sort(),
-    [results],
-  );
-  // Categorías GENERALES presentes en los resultados.
-  const categoryOptions = useMemo(() => {
-    const set = new Set<GeneralCategory>();
-    for (const r of results) {
-      const g = generalCategory(r.categoria);
-      if (g) set.add(g);
-    }
-    return [...set].sort();
-  }, [results]);
+  // Marcas: catálogo real + las presentes en los resultados actuales.
+  const brandOptions = useMemo(() => {
+    const set = new Set(catalogBrands);
+    for (const r of results) if (r.marca) set.add(r.marca);
+    return [...set].sort((a, b) => a.localeCompare(b, "es"));
+  }, [catalogBrands, results]);
+
+  // Techo del slider según el modo activo (resultados o exploración).
+  const activeItems = hasSearch ? results : (browse ?? []);
   const priceCeiling = useMemo(
-    () => Math.max(1000, ...results.map((r) => r.precio_min ?? 0)),
-    [results],
+    () => Math.max(1000, ...activeItems.map((r) => r.precio_min ?? 0)),
+    [activeItems],
   );
 
   const effMin = minPrice ?? 0;
   const effMax = maxPrice ?? priceCeiling;
 
-  const filtered = useMemo(() => {
-    return results.filter((item) => {
+  // Predicado único de filtros: se aplica a los resultados de búsqueda y al
+  // modo exploración. Precio solo cuando el usuario movió el slider.
+  const matchesFilters = useMemo(() => {
+    return (item: SearchItem) => {
       if (item.precio_min != null) {
-        if (item.precio_min < effMin) return false;
-        if (item.precio_min > effMax) return false;
+        if (minPrice != null && item.precio_min < minPrice) return false;
+        if (maxPrice != null && item.precio_min > maxPrice) return false;
       }
       if (brand !== ALL && item.marca !== brand) return false;
       if (category !== ALL && generalCategory(item.categoria) !== category) return false;
@@ -141,10 +168,11 @@ export default function ProductosPage() {
       if (seals.has("Comprado antes") && !purchasedNames.has(normalizeText(item.nombre))) return false;
       if (seals.has("En despensa") && !pantryNames.has(normalizeText(item.nombre))) return false;
       return true;
-    });
-  }, [results, effMin, effMax, brand, category, storeFilter, onlyStrong, onlyMultiStore, seals, purchasedNames, pantryNames]);
+    };
+  }, [minPrice, maxPrice, brand, category, storeFilter, onlyStrong, onlyMultiStore, seals, purchasedNames, pantryNames]);
 
-  const hasSearch = term.length >= 2;
+  const filtered = useMemo(() => results.filter(matchesFilters), [results, matchesFilters]);
+
   const anyFilter =
     minPrice != null ||
     maxPrice != null ||
@@ -174,91 +202,17 @@ export default function ProductosPage() {
       return next;
     });
 
-  // Sugerencias de autocompletado: primeras coincidencias del propio resultado.
-  const suggestions = useMemo(() => results.slice(0, 8), [results]);
-
-  const openFromSuggestion = (item: SearchItem) => {
-    setSuggestOpen(false);
-    setDetail(item);
-  };
-
   return (
     <div className="space-y-6">
       <SectionHeading
         title="Productos"
-        description="Busca como en un supermercado online y compara precios entre tiendas."
+        description="Busca desde la barra superior como en un supermercado online y compara precios entre tiendas."
       />
 
-      {/* Buscador con autocompletado */}
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setSuggestOpen(true);
-          }}
-          onFocus={() => setSuggestOpen(true)}
-          onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
-          placeholder="Buscar por nombre, categoría o marca…"
-          className="h-14 rounded-xl pl-12 pr-12 text-base shadow-sm"
-          aria-label="Buscar productos"
-          autoFocus
-        />
-        {query && (
-          <button
-            type="button"
-            onClick={() => setQuery("")}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            aria-label="Limpiar búsqueda"
-          >
-            <X className="size-5" />
-          </button>
-        )}
-
-        {/* Dropdown de autosugerencias */}
-        {suggestOpen && hasSearch && suggestions.length > 0 && (
-          <ul className="absolute left-0 right-0 top-full z-30 mt-2 max-h-80 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-xl">
-            {suggestions.map((item) => (
-              <li key={`sug-${item.kind}-${item.id}`}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => openFromSuggestion(item)}
-                  className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-accent"
-                >
-                  <div className="size-9 shrink-0 rounded-md bg-white p-1">
-                    <ProductImage ean={item.ean} alt={item.nombre} category={item.categoria} className="h-full w-full" />
-                  </div>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-foreground">{item.nombre}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {[item.marca, item.categoria].filter(Boolean).join(" · ") || "Producto"}
-                    </span>
-                  </span>
-                  {item.precio_min != null && (
-                    <span className="cw-price shrink-0 text-sm font-bold text-foreground">
-                      {money(item.precio_min)}
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {!hasSearch ? (
-        <BrowseDeals
-          purchasedCategories={purchasedCategories}
-          onAdd={addToBasket}
-          onOpenDetail={setDetail}
-        />
-      ) : (
-        <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
           {/* Panel de filtros */}
-          <aside className="space-y-5 lg:sticky lg:top-20 lg:self-start">
-            <div className="rounded-xl border border-border bg-card p-4">
+          <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 text-sm font-bold text-foreground">
                   <SlidersHorizontal className="size-4" /> Filtros
@@ -308,7 +262,7 @@ export default function ProductosPage() {
                   />
                 </div>
 
-                {/* Marca */}
+                {/* Marca (todas las del catálogo comparable) */}
                 <div className="space-y-2">
                   <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Marca</span>
                   <Select value={brand} onValueChange={setBrand}>
@@ -326,7 +280,7 @@ export default function ProductosPage() {
                   </Select>
                 </div>
 
-                {/* Categoría general */}
+                {/* Categoría general (todas, no solo las de los resultados) */}
                 <div className="space-y-2">
                   <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Categoría</span>
                   <Select value={category} onValueChange={setCategory}>
@@ -335,7 +289,7 @@ export default function ProductosPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={ALL}>Todas las categorías</SelectItem>
-                      {categoryOptions.map((c) => (
+                      {GENERAL_CATEGORY_ORDER.map((c) => (
                         <SelectItem key={c} value={c}>
                           {c}
                         </SelectItem>
@@ -384,12 +338,20 @@ export default function ProductosPage() {
             </div>
           </aside>
 
-          {/* Resultados */}
+          {/* Resultados (o catálogo de exploración si aún no hay búsqueda) */}
           <div className="space-y-4">
-            {loading ? (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                {Array.from({ length: 9 }).map((_, i) => (
-                  <Skeleton key={i} className="h-72 w-full rounded-lg" />
+            {!hasSearch ? (
+              <BrowseDeals
+                deals={browse}
+                error={browseError}
+                matches={anyFilter ? matchesFilters : undefined}
+                onAdd={addToBasket}
+                onOpenDetail={setDetail}
+              />
+            ) : loading ? (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-72 w-full rounded-xl" />
                 ))}
               </div>
             ) : error ? (
@@ -406,7 +368,7 @@ export default function ProductosPage() {
                   {filtered.length} resultados para{" "}
                   <span className="font-semibold text-foreground">“{term}”</span>
                 </p>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                   {filtered.map((item) => (
                     <ProductCard
                       key={`${item.kind}-${item.id}`}
@@ -420,8 +382,7 @@ export default function ProductosPage() {
               </>
             )}
           </div>
-        </div>
-      )}
+      </div>
 
       <ProductDetailDialog item={detail} onClose={() => setDetail(null)} onAddBasket={addToBasket} />
     </div>

@@ -1,6 +1,7 @@
 import type {
   BasketComparison,
   BasketItem,
+  CatalogFacets,
   Health,
   ProductOffers,
   SearchItem,
@@ -39,6 +40,10 @@ export async function getStrongDeals(limit = 400) {
 export async function getStoreDeals(perStore = 12) {
   const data = await request<{ stores: StoreDeals[] }>(`/api/deals/by-store?perStore=${perStore}`);
   return data.stores;
+}
+
+export function getCatalogFacets(limit = 80) {
+  return request<CatalogFacets>(`/api/catalog/facets?limit=${limit}`);
 }
 
 export function getProductOffers(id: number) {

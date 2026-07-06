@@ -34,7 +34,9 @@ const SheetContent = React.forwardRef<
     <SheetPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed z-50 flex h-full w-full max-w-md flex-col gap-4 bg-card p-6 shadow-xl transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-400",
+        // Entrada suave: curva tipo iOS y 500ms (duration-400 no existe en
+        // Tailwind, por lo que antes caía en los 150ms por defecto).
+        "fixed z-50 flex h-full w-full max-w-md flex-col gap-4 bg-card p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-500 data-[state=closed]:duration-300 data-[state=open]:ease-[cubic-bezier(0.32,0.72,0,1)] data-[state=closed]:ease-[cubic-bezier(0.32,0.72,0,1)]",
         side === "right" &&
           "inset-y-0 right-0 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
         side === "left" &&

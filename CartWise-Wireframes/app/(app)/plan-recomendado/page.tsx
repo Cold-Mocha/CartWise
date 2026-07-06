@@ -1,38 +1,46 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Crown, Check, X, Save, BadgeCheck, ArrowLeft, Search } from "lucide-react";
-import { useAppState } from "@/components/state/app-state";
-import { ConfirmPurchaseDialog } from "@/components/history/confirm-purchase-dialog";
+import { ArrowLeft, ClipboardList, Scale, Share2 } from "lucide-react";
+import { toast } from "sonner";
+import { useComparison } from "@/components/state/comparison-provider";
 import { SectionHeading } from "@/components/common/section-heading";
 import { EmptyState } from "@/components/common/empty-state";
+import { StoreLogo } from "@/components/brand/store-logo";
 import { ProductImage } from "@/components/product/product-image";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { money, plural } from "@/lib/format";
-import type { SavedPlan } from "@/types/cartwise";
+import { Card } from "@/components/ui/card";
+import { itemKey, lineFor, buildPlan } from "@/lib/comparison-plan";
+import { money } from "@/lib/format";
+
+/*
+  Paso final del flujo: la compra ya quedó planificada al confirmar el plan en
+  /comparar. Muestra el resumen (total combinado) y la distribución por tienda
+  de lo que el usuario seleccionó, con un botón para compartir el plan. Cada
+  producto indica en letra pequeña en qué otras tiendas está disponible, por
+  si no se encuentra en el supermercado al que se planea ir. Sin botón de
+  confirmar: aquí no queda nada pendiente.
+*/
 
 export default function PlanRecomendadoPage() {
-  const { comparison, savePlan, createPlanFromComparison, confirmPurchase } = useAppState();
-  const [confirming, setConfirming] = useState<SavedPlan | null>(null);
+  const { hydrated, comparison, selection } = useComparison();
+  const plan = comparison ? buildPlan(comparison, selection) : null;
 
-  const rec = comparison?.recommendedStore;
+  // Evita el parpadeo del estado vacío mientras se lee lo persistido.
+  if (!hydrated) return null;
 
-  if (!comparison || !rec) {
+  if (!comparison || !plan || plan.covered === 0) {
     return (
       <div className="space-y-6">
-        <SectionHeading eyebrow="Plan recomendado" title="Plan recomendado" />
+        <SectionHeading title="Resumen de selección" />
         <EmptyState
-          icon={Crown}
+          icon={ClipboardList}
           title="Todavía no hay un plan"
-          description="Compara tu compra pendiente para obtener una tienda recomendada."
+          description="Selecciona dónde comprar cada producto y confirma tu plan para verlo aquí."
           action={
             <Button asChild>
-              <Link href="/compra-pendiente">
-                <Search /> Ir a mi compra pendiente
+              <Link href="/comparar">
+                <Scale /> Ir a la selección
               </Link>
             </Button>
           }
@@ -42,128 +50,149 @@ export default function PlanRecomendadoPage() {
   }
 
   const totalItems = comparison.items.length;
-  const covered = rec.lines.filter((l) => l.price != null);
-  const missing = rec.lines.filter((l) => l.price == null);
 
-  const startConfirm = () => {
-    const plan = createPlanFromComparison();
-    if (plan) setConfirming(plan);
+  // Texto plano del plan para compartirlo (Web Share API o portapapeles).
+  const planText = () => {
+    const out: string[] = [
+      `Plan de compra Cartwise — ${money(plan.total)} (${plan.covered}/${totalItems} productos · ${plan.groups.length} ${plan.groups.length === 1 ? "tienda" : "tiendas"})`,
+    ];
+    for (const { store, lines, subtotal } of plan.groups) {
+      out.push("", `${store.store.label} — ${money(subtotal)}:`);
+      for (const { item, lineTotal } of lines) {
+        out.push(`• ${item.nombre} ×${item.quantity} — ${money(lineTotal)}`);
+      }
+    }
+    return out.join("\n");
+  };
+
+  // Copia con textarea + execCommand cuando el portapapeles asíncrono está
+  // bloqueado (contextos sin permiso de clipboard).
+  const copyFallback = (text: string) => {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  };
+
+  const sharePlan = async () => {
+    const text = planText();
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Plan de compra Cartwise", text });
+        return;
+      } catch {
+        // Compartir cancelado por el usuario: no hacemos nada.
+        return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Plan copiado al portapapeles");
+    } catch {
+      if (copyFallback(text)) toast.success("Plan copiado al portapapeles");
+      else toast.error("No se pudo copiar el plan");
+    }
   };
 
   return (
-    <div className="space-y-8">
-      <SectionHeading
-        eyebrow="Paso 2 de 2"
-        title="Resumen de tu compra"
-        description="El resumen consolidado: tienda recomendada, total y ahorro estimados, y productos incluidos."
-        action={
-          <Button asChild variant="outline">
-            <Link href="/comparar">
-              <ArrowLeft /> Volver a comparación
+    <div className="space-y-6">
+      {/* Encabezado con flecha de volver a la izquierda del título */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button asChild variant="outline" size="icon" className="rounded-full">
+            <Link href="/comparar" aria-label="Volver a la selección" title="Volver a la selección">
+              <ArrowLeft />
             </Link>
           </Button>
-        }
-      />
-
-      {/* Cabecera del plan */}
-      <Card className="overflow-hidden border-2 border-primary">
-        <div className="flex items-center gap-2 bg-primary px-5 py-2 text-sm font-extrabold text-primary-foreground">
-          <Crown className="size-4" /> Supermercado recomendado
-        </div>
-        <CardContent className="grid gap-6 p-6 md:grid-cols-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tienda</p>
-            <p className="text-2xl font-extrabold text-foreground">{rec.store.label}</p>
-            <p className="text-sm text-muted-foreground">
-              Cubre {rec.pricedItems} de {totalItems} productos
+          <div className="space-y-1">
+            <h2 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+              Resumen de selección
+            </h2>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              Tu plan quedó creado. Este es el resumen y la distribución por tienda de lo que
+              seleccionaste.
             </p>
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total estimado</p>
-            <p className="cw-price text-3xl font-extrabold text-foreground">{money(rec.total)}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ahorro estimado</p>
-            <p className="cw-price text-3xl font-extrabold text-savings">{money(comparison.estimatedSavings)}</p>
-          </div>
-        </CardContent>
-        <Separator />
-        <CardContent className="flex flex-wrap gap-2 p-5">
-          <Button onClick={startConfirm}>
-            <BadgeCheck /> Confirmar compra
-          </Button>
-          <Button variant="outline" onClick={savePlan}>
-            <Save /> Guardar como compra planificada
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Productos incluidos */}
-      <section className="space-y-3">
-        <h3 className="text-lg font-extrabold text-foreground">
-          Productos incluidos <span className="text-muted-foreground">({plural(covered.length, "producto")})</span>
-        </h3>
-        <div className="grid gap-2.5">
-          {covered.map((line) => (
-            <Card key={`${line.kind}-${line.itemId}`}>
-              <CardContent className="flex items-center gap-3 p-3">
-                <div className="size-12 shrink-0 rounded-md bg-white p-1">
-                  <ProductImage ean={line.ean} alt={line.name} className="h-full w-full" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-foreground">{line.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {line.matchedProductName && line.matchedProductName !== line.name
-                      ? `${line.matchedProductName} · `
-                      : ""}
-                    ×{line.quantity}
-                  </p>
-                </div>
-                <Badge variant="savings">
-                  <Check className="size-3" /> Disponible
-                </Badge>
-                <span className="cw-price w-24 text-right text-sm font-extrabold text-foreground">
-                  {money(line.lineTotal)}
-                </span>
-              </CardContent>
-            </Card>
-          ))}
         </div>
-      </section>
+        <Button onClick={sharePlan}>
+          <Share2 /> Compartir plan
+        </Button>
+      </div>
 
-      {/* Productos faltantes */}
-      {missing.length > 0 && (
-        <section className="space-y-3">
-          <h3 className="text-lg font-extrabold text-foreground">
-            Productos faltantes en {rec.store.label}{" "}
-            <span className="text-muted-foreground">({plural(missing.length, "producto")})</span>
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Esta tienda no tiene precio para estos productos en el snapshot. No los ocultamos: considéralos al decidir.
-          </p>
-          <div className="grid gap-2.5">
-            {missing.map((line) => (
-              <Card key={`${line.kind}-${line.itemId}`} className="border-destructive/30">
-                <CardContent className="flex items-center gap-3 p-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-foreground">{line.name}</p>
-                    <p className="text-xs text-muted-foreground">×{line.quantity}</p>
-                  </div>
-                  <Badge variant="missing">
-                    <X className="size-3" /> Sin precio
-                  </Badge>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Resumen: total combinado */}
+      <div className="rounded-2xl bg-primary px-5 py-4 text-center text-primary-foreground shadow-sm">
+        <p className="text-xs font-medium text-primary-foreground/80">Total combinado</p>
+        <p className="cw-price mt-0.5 text-3xl font-bold tracking-tight">{money(plan.total)}</p>
+        <p className="mt-1 text-xs text-primary-foreground/80">
+          {plan.covered}/{totalItems} productos · {plan.groups.length}{" "}
+          {plan.groups.length === 1 ? "tienda" : "tiendas"}
+        </p>
+      </div>
 
-      <ConfirmPurchaseDialog
-        plan={confirming}
-        onClose={() => setConfirming(null)}
-        onConfirm={confirmPurchase}
-      />
+      {/* Distribución por tienda */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {plan.groups.map(({ store, lines, subtotal }) => (
+          <Card key={store.store.id} className="overflow-hidden rounded-2xl">
+            <div className="flex items-center gap-3 border-b border-border/60 p-4">
+              <StoreLogo
+                name={store.store.label}
+                size={36}
+                className="rounded-full ring-1 ring-border"
+              />
+              <div className="flex-1">
+                <p className="font-semibold leading-tight text-foreground">{store.store.label}</p>
+                <p className="text-xs text-muted-foreground">
+                  {lines.length} {lines.length === 1 ? "producto" : "productos"}
+                </p>
+              </div>
+              <p className="cw-price text-lg font-bold text-primary">{money(subtotal)}</p>
+            </div>
+            <ul className="divide-y divide-border/60">
+              {lines.map(({ item, lineTotal }) => {
+                // Otras tiendas donde está el producto, por si no se encuentra
+                // en la tienda planificada al ir en persona.
+                const alternatives = plan.stores.filter(
+                  (s) => s.store.id !== store.store.id && lineFor(s, item)?.price != null,
+                );
+                return (
+                  <li key={itemKey(item)} className="flex items-center gap-3 px-4 py-2.5">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted">
+                      <ProductImage
+                        ean={item.ean}
+                        alt={item.nombre}
+                        category={item.categoria}
+                        className="size-7 object-contain"
+                      />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm leading-tight text-foreground">
+                        {item.nombre}{" "}
+                        <span className="text-xs text-muted-foreground">×{item.quantity}</span>
+                      </span>
+                      <span className="mt-0.5 block text-[11px] leading-tight text-muted-foreground">
+                        {alternatives.length > 0
+                          ? `También en ${alternatives
+                              .map((s) => `${s.store.label} (${money(lineFor(s, item)?.lineTotal)})`)
+                              .join(" · ")}`
+                          : "Solo disponible en esta tienda"}
+                      </span>
+                    </span>
+                    <span className="cw-price shrink-0 text-sm font-medium text-foreground">
+                      {money(lineTotal)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
