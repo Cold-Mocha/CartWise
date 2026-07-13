@@ -92,7 +92,7 @@ export function BrowseDeals({
         <p className="rounded-xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
           {matches
             ? "Ningún producto destacado coincide con los filtros. Ajusta o limpia los filtros."
-            : "No hay diferencias destacadas en este snapshot."}
+            : "No hay diferencias destacadas por ahora."}
         </p>
       )}
     </div>

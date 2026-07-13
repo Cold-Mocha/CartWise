@@ -6,6 +6,7 @@ import { ComparisonProvider } from "./comparison-provider";
 import { SavedListsProvider } from "./saved-lists-provider";
 import { PurchaseHistoryProvider } from "./purchase-history-provider";
 import { PantryProvider } from "./pantry-provider";
+import { GeneratedPurchasesProvider } from "./generated-purchases-provider";
 
 // Composición de los providers por feature. Son independientes entre sí (el
 // orden de anidación no importa); los flujos que cruzan features viven en
@@ -17,7 +18,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
         <ComparisonProvider>
           <SavedListsProvider>
             <PurchaseHistoryProvider>
-              <PantryProvider>{children}</PantryProvider>
+              <GeneratedPurchasesProvider>
+                <PantryProvider>{children}</PantryProvider>
+              </GeneratedPurchasesProvider>
             </PurchaseHistoryProvider>
           </SavedListsProvider>
         </ComparisonProvider>

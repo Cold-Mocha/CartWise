@@ -32,17 +32,35 @@ supermercado entre cadenas chilenas usando **datos de catálogo previamente capt
 
 ### Funcionalidades del MVP (activas)
 
-1. **Landing pública** — explica Cartwise, muestra supermercados cubiertos y un carrusel de
-   oportunidades destacadas (diferencias de precio entre tiendas).
-2. **Login demo** — entrada simple a la app demo, sin autenticación real.
+1. **Landing pública** — hero centrado sobre foto con chips (logo + nombre) de las 4
+   cadenas cubiertas (solo las integradas; sin "próximamente"), cinta promocional al pie
+   del hero, productos con mayor diferencia de precio entre tiendas (solo productos
+   presentes en 3+ supermercados; el criterio no se menciona en la UI), sección "cómo
+   funciona", historia y testimonios. No hay sección aparte de supermercados: las cadenas
+   viven en los chips del hero.
+   El badge rojo de descuento aparece solo si la tienda más barata tiene una oferta temporal
+   real (`oferta_real` del snapshot). Historia y testimonios son contenido ilustrativo de
+   vitrina (no provienen de usuarios reales).
+2. **Login demo** — formulario que simula un login normal con credenciales fijas
+   (usuario `Test1`, contraseña `12345678`). No hay autenticación real; la UI no
+   lo anuncia, pero este README sí: es solo una sesión local de demostración.
 3. **Dashboard mensual** — gasto del mes, ahorro estimado y confirmado, historial reciente,
    diferencias destacadas, compra pendiente, despensa y estado del snapshot.
 4. **Búsqueda de productos** — catálogo con precio, tienda, categoría y tipo de coincidencia
    (exacta por EAN o comparable genérico).
 5. **Compra pendiente** — agregar/quitar productos y cambiar cantidades.
-6. **Comparación entre supermercados** — total por tienda, faltantes y cobertura.
-7. **Plan recomendado** — recomienda priorizando cobertura y luego precio.
-8. **Historial de compras** — compras confirmadas y planes guardados; repetir compra.
+6. **Selección de dónde comprar (comparación)** — matriz de precios con los supermercados
+   en columnas: cada producto parte asignado a la opción más barata ("Menor precio") y el
+   usuario puede reasignarlo a otra tienda o quitarlo; abajo, total combinado y detalle
+   por tienda. "Confirmar plan" crea la compra pendiente directamente.
+7. **Resumen de selección (paso final)** — resumen y distribución por tienda de lo
+   seleccionado, con botón para compartir el plan (Web Share / portapapeles); cada
+   producto indica en qué otras tiendas está disponible por si falta en la tienda elegida.
+8. **Compras (pendientes + historial)** — una sola pantalla con dos secciones: arriba las
+   compras pendientes por confirmar (repetir, comparar, ver detalle, eliminar) y abajo el
+   historial de compras confirmadas. Al confirmar una compra se pregunta cuánto se pagó y
+   qué productos se encontraron; solo lo encontrado se registra y la compra pasa al
+   historial (tarjetas con fecha, cantidad, miniaturas y total real).
 9. **Listas guardadas simples** — guardar una compra para repetirla rápido.
 10. **Despensa simulada (almacén del hogar)** — ver, agregar, quitar y ajustar cantidades;
     enviar a despensa los productos de una compra confirmada.
@@ -70,7 +88,9 @@ supermercado entre cadenas chilenas usando **datos de catálogo previamente capt
 
 ```text
 Landing → Login demo → Dashboard → Buscar productos → Compra pendiente
-  → Comparación → Plan recomendado → Confirmar/guardar compra → Historial / Despensa
+  → Selección de dónde comprar → Confirmar plan (crea la compra pendiente)
+  → Resumen final / compartir → Compras: confirmar compra (qué encontraste
+    y cuánto pagaste) → Historial / Despensa
 ```
 
 ### Sobre los datos
@@ -137,17 +157,20 @@ CartWise/
     │   ├── login/                   # Login demo
     │   ├── (app)/                   # Pantallas autenticadas (guard de sesión demo)
     │   │   ├── dashboard/  productos/  compra-pendiente/
-    │   │   ├── comparar/  plan-recomendado/  historial/
-    │   │   └── listas/  despensa/
+    │   │   ├── comparar/  plan-recomendado/
+    │   │   └── compras/  despensa/
     │   └── api/                     # Route handlers → bridge Python (health, deals,
     │                                #   products/search, generic/search, offers, compare)
     ├── components/              # UI por dominio
     │   ├── ui/                      # Primitivos shadcn/ui personalizados
-    │   ├── state/                   # AppStateProvider (estado MVP + localStorage)
+    │   ├── state/                   # Providers por feature (sesión, compra pendiente,
+    │   │                            #   comparación, listas, historial, despensa, presupuesto)
     │   ├── product/  comparison/  dashboard/  history/  pantry/  purchase/
     │   └── layout/  landing/  brand/  store/  common/
+    ├── hooks/                   # use-persistent-state + flujos multi-feature
+    │                            #   (use-plan-workflows, use-list-workflows)
     ├── lib/                     # api.ts, format.ts, storage.ts, constants.ts,
-    │   │                        #   basket.ts, text.ts, utils.ts
+    │   │                        #   basket.ts, text.ts, utils.ts, id.ts
     │   └── server/bridge.ts         # Runner del bridge Python (solo servidor)
     ├── types/cartwise.ts        # Contratos de datos (espejan al bridge)
     └── server/sqlite_bridge.py  # Helper Python que lee comparador.sqlite (conservado)
@@ -183,26 +206,29 @@ Tottus y Líder se dejan para el final (mayor riesgo / anti-bot).
 ## 3. Estado por fases
 
 > **FASE 2 (Tottus) es la siguiente.** Fases 0 y 1 completadas. Scope activo:
-> **`grocery` con 70.584 filas staging**. El raw conserva 74.192 productos
-> descargados antes del filtro de scope.
+> **`grocery` con 70.681 filas staging**. El raw vigente conserva 73.440 productos
+> descargados antes del filtro de scope (capturas anteriores archivadas en
+> `datos/snapshots/`).
 
 | Fase | Tienda(s) | Estado |
 |------|-----------|--------|
 | **0** | El Trébol (Bootic) | ✅ **COMPLETADA** — 8.680 prod grocery (98.0% EAN) |
-| **1** | Jumbo / Santa Isabel / Unimarc (VTEX) | ✅ **COMPLETADA** — 34.880 / 17.781 / 9.243 prod grocery (≈99% EAN) |
+| **1** | Jumbo / Santa Isabel / Unimarc (VTEX) | ✅ **COMPLETADA** — 34.931 / 17.869 / 9.201 prod grocery (≈99% EAN) |
 | **2** | Tottus (commercetools/Next.js) | ⚪ **SIGUIENTE** — intentar `__NEXT_DATA__` o Playwright |
 | **3** | Líder (Walmart/Akamai) | ⚪ No iniciada — servicio gestionado o Playwright stealth |
 | **★** | Matching cross-tienda | ✅ Capa 1 (EAN) + Capa 2 (genérico) construidas |
 
 **Detalle de lo hecho:**
-- Snapshot fechado del raw en `datos/snapshots/2026-06-24/` (JSONL + BD por nodo, 681 MB).
-- Staging y mart revalidados el **2026-06-29** con scope configurable `food | grocery | all`.
+- Snapshots fechados del raw en `datos/snapshots/2026-06-24/` y `datos/snapshots/2026-06-29/`
+  (JSONL + BD por nodo). Captura vigente: **2026-07-04** (4 tiendas re-scrapeadas completas;
+  `capturado_en` en UTC marca 2026-07-05).
+- Staging y mart con scope configurable `food | grocery | all`.
   El mart activo usa `grocery`: incluye limpieza, cuidado personal, bebé/pañales y mascotas;
   excluye farmacia/medicamentos, cigarrillos, vestuario, juguetes/librería y hogar durable.
 - Pipeline validado end-to-end en El Trébol antes de escalar a VTEX.
-- Comparador grocery: **42.661 productos únicos** (42.158 con EAN), **70.460 ofertas**,
-  **2.425 productos en las 4 tiendas**, 17.989 en ≥2. Capa 2: 38.564 genéricos,
-  42.581 miembros, 16.206 genéricos en ≥2 tiendas, **8.607 candidatos difusos**.
+- Comparador grocery: **42.672 productos únicos** (42.161 con EAN), **70.560 ofertas**,
+  **2.441 productos en las 4 tiendas**, 18.019 en ≥2. Capa 2: 38.582 genéricos,
+  42.592 miembros, 16.234 genéricos en ≥2 tiendas, **8.610 candidatos difusos**.
 
 ## 4. Arquitectura del pipeline (3 niveles de datos)
 
@@ -309,28 +335,31 @@ python3 -m comparadores.capa2
 python3 -m comparadores.construir_comparador --scope grocery
 ```
 
-### Estado validado del pipeline (2026-06-29)
+### Estado validado del pipeline (2026-07-04)
 
-Última reconstrucción local: raw ampliado/resumible → staging `grocery` →
-`comparador.sqlite` con `metadata.scope = grocery`. Métricas completas en
-`Scrapper/datos/comparadores/metricas_grocery.json`.
+Última reconstrucción local: re-scrape completo de las 4 tiendas (2026-07-04) →
+staging `grocery` → `comparador.sqlite` con `metadata.scope = grocery`. Métricas
+completas en `Scrapper/datos/comparadores/metricas_grocery.json`. Nota: El Trébol
+devolvió exactamente el mismo catálogo que el 2026-06-24 (0 cambios de precio);
+las cadenas VTEX sí cambiaron (Jumbo 5,3%, Santa Isabel 2,7%, Unimarc 13,2% de
+precios distintos vs. la captura anterior).
 
 | Tienda | Filas staging | Con EAN | Disponibles | Ofertas en mart |
 |---|---:|---:|---:|---:|
 | El Trébol | 8.680 | 8.510 | 3.877 | 8.680 |
-| Jumbo | 34.880 | 34.745 | 19.772 | 34.791 |
-| Santa Isabel | 17.781 | 17.663 | 17.771 | 17.746 |
-| Unimarc | 9.243 | 9.163 | 8.474 | 9.243 |
+| Jumbo | 34.931 | 34.795 | 19.473 | 34.842 |
+| Santa Isabel | 17.869 | 17.752 | 17.858 | 17.837 |
+| Unimarc | 9.201 | 9.113 | 8.492 | 9.201 |
 
 Resumen del mart:
-- `producto_marca`: 42.661 productos únicos; 42.158 con EAN y 503 sin EAN.
-- `oferta`: 70.460 filas producto×tienda.
-- Comparables exactos por EAN en ≥2 tiendas: 17.989; en las 4 tiendas: 2.425.
-- Capa 2: 38.564 genéricos, 42.581 miembros, 16.206 genéricos en ≥2 tiendas y
-  8.607 candidatos difusos.
-- Productos con marca: 42.647; con imagen: 42.657; con link: 42.661.
-- Productos con precio lista: 41.566; productos con oferta real: 7.258.
-- Ofertas con precio lista: 68.499; ofertas marcadas como oferta real: 9.790.
+- `producto_marca`: 42.672 productos únicos; 42.161 con EAN y 511 sin EAN.
+- `oferta`: 70.560 filas producto×tienda.
+- Comparables exactos por EAN en ≥2 tiendas: 18.019; en las 4 tiendas: 2.441.
+- Capa 2: 38.582 genéricos, 42.592 miembros, 16.234 genéricos en ≥2 tiendas y
+  8.610 candidatos difusos.
+- Productos con marca: 42.658; con imagen: 42.669; con link: 42.672.
+- Productos con precio lista: 42.670; productos con oferta real: 7.780.
+- Ofertas con precio lista: 70.558; ofertas marcadas como oferta real: 10.395.
 - `PRAGMA integrity_check`: `ok`.
 
 Conteo por tipo (`producto_marca`):
@@ -405,19 +434,25 @@ Next.js (App Router, puerto 3000)
 - La **API vive dentro de Next**: las route handlers de `app/api/*` invocan el mismo bridge
   Python de siempre. No hay servidor Express; la lógica de comparación sigue intacta en el
   bridge (`compare_basket`), el frontend no la reimplementa.
-- Login **demo**: no hay autenticación real. El botón "Entrar como demo" marca una bandera en
-  `localStorage`. Sesión, compra pendiente, historial, listas y despensa viven en
-  `localStorage` (no hay backend de usuarios).
+- Login **demo**: no hay autenticación real, aunque la UI lo presenta como un login normal
+  ("Iniciar sesión"). El formulario de `/login` valida credenciales fijas (`DEMO_CREDENTIALS`
+  en `lib/constants.ts`, usuario `Test1` / contraseña `12345678`, usuario case-insensitive)
+  y marca una bandera en `localStorage`. Sesión, compra pendiente, historial, listas y
+  despensa viven en `localStorage` (no hay backend de usuarios).
 - Tiendas disponibles = las 4 del mart: El Trébol, Jumbo, Santa Isabel, Unimarc.
 
 ### Arquitectura interna del frontend
 
-- **Rutas** en `app/`: landing (`/`), login (`/login`) y grupo autenticado `(app)/` con las
-  pantallas MVP. El grupo usa `AppShell`, que aplica el guard de sesión demo, el header con
+- **Rutas** en `app/`: landing (`/`), login (`/login`), guía de estilo interna (`/style`,
+  referencia de diseño para desarrollo; no se enlaza desde la navegación) y grupo autenticado
+  `(app)/` con las pantallas MVP. El grupo usa `AppShell`, que aplica el guard de sesión demo, el header con
   navegación y el footer de transparencia.
-- **Estado** centralizado en `components/state/app-state.tsx` (`AppStateProvider`): un único
-  contexto con compra pendiente, comparación, listas, historial, compras confirmadas y
-  despensa. Hidrata desde `localStorage` tras montar (patrón SSR-safe, sin mismatch).
+- **Estado** dividido en providers por feature en `components/state/` (sesión demo, compra
+  pendiente, comparación, listas guardadas, compras pendientes/historial, despensa y presupuesto),
+  compuestos en `app-providers.tsx`. Cada provider hidrata su porción de `localStorage` tras
+  montar (patrón SSR-safe vía `hooks/use-persistent-state.ts`, sin mismatch). Los providers no
+  se conocen entre sí: los flujos que cruzan features (crear/confirmar un plan, comparar o
+  repetir una lista) viven en `hooks/use-plan-workflows.ts` y `hooks/use-list-workflows.ts`.
 - **Datos**: los componentes no hacen `fetch` directo; pasan por `lib/api.ts`. Los tipos en
   `types/cartwise.ts` espejan la salida del bridge.
 - **UI**: primitivos shadcn/ui personalizados en `components/ui/` (button, card, badge,
@@ -450,33 +485,37 @@ Variables útiles para desarrollo (ver `.env.example`):
 |---|---|
 | `GET /api/health` | Verifica el mart y devuelve conteos / tiendas. |
 | `GET /api/deals/top?limit=8` | Productos con mayor diferencia por EAN. |
+| `GET /api/deals/strong?limit=400` | Diferencias destacadas (≥20%); incluye `n_tiendas` y `oferta_real`/`precio_lista` de la tienda más barata. |
 | `GET /api/products/search?q=` | Búsqueda exacta por producto / EAN / marca (Capa 1). |
 | `GET /api/generic/search?q=` | Búsqueda de comparables genéricos (Capa 2). |
 | `GET /api/products/:id/offers` | Ofertas por tienda de un producto exacto. |
 | `POST /api/basket/compare` | Compara la compra pendiente contra las tiendas disponibles. |
 
 **Reglas de comparación:** Capa 1 (EAN) como match principal, Capa 2 (genérico) como
-fallback. Productos sin precio en una tienda → "Sin precio", no bloquean el cálculo. La
-tienda recomendada prioriza **menor cantidad de productos sin precio** y luego **menor
-total**. El ahorro se calcula *like-for-like* (solo entre tiendas con la misma cobertura
-que la recomendada).
+fallback. Productos sin precio en una tienda → "Sin precio", no bloquean el cálculo. En la
+matriz de selección cada producto parte asignado a la **tienda más barata disponible**; el
+usuario puede reasignarlo o quitarlo, y el plan resultante agrupa por tienda con subtotales
+y total combinado (la asignación vive en `lib/comparison-plan.ts` y se comparte entre
+/comparar y /plan-recomendado vía `ComparisonProvider`).
 
 ## 10. Pantallas y flujo
 
 Pantallas del MVP (10): **Landing pública** · **Login demo** · **Dashboard mensual** ·
-**Catálogo / búsqueda de productos** · **Compra pendiente** · **Comparación de
-supermercados** · **Plan recomendado** · **Historial de compras** · **Listas guardadas** ·
-**Despensa / almacén del hogar**.
+**Catálogo / búsqueda de productos** · **Compra pendiente** · **Selección de dónde comprar
+(comparación)** · **Resumen de selección (paso final)** · **Compras (pendientes +
+historial)** · **Listas guardadas** · **Despensa / almacén del hogar**.
 
 > No hay perfil, login real, pagos, OCR ni precios en tiempo real (ver §0). El menú solo
-> contiene pantallas MVP; *comparar* y *plan recomendado* son pasos del flujo de compra.
+> contiene pantallas MVP; *comparar* (selección) y *plan-recomendado* (resumen final) son
+> pasos del flujo de compra.
 
-Navegación: header con nav en desktop y menú lateral (sheet) en móvil; la compra pendiente
-tiene su propio botón con contador.
+Navegación: todo vive en el header, sin menú lateral (íconos siempre visibles, etiquetas
+desde `lg`); la compra pendiente tiene su propio botón con contador.
 
 ```text
-landing → entrar como demo → dashboard → buscar producto → agregar a compra pendiente
-  → comparar supermercados → plan recomendado → guardar/confirmar → enviar a despensa
+landing → login demo (credenciales fijas) → dashboard → buscar producto → agregar a compra pendiente
+  → seleccionar dónde comprar cada producto → confirmar plan (queda pendiente de confirmar)
+  → resumen final / compartir → Compras: confirmar (qué encontraste, cuánto pagaste)
   → historial / despensa actualizados
 ```
 

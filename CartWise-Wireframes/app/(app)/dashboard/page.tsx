@@ -61,7 +61,7 @@ export default function DashboardPage() {
         ) : (
           <EmptyState
             icon={Tag}
-            title="Sin diferencias destacadas en este snapshot"
+            title="Sin diferencias destacadas"
             description="Vuelve a intentarlo más tarde."
           />
         )}

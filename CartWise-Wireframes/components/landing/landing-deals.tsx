@@ -56,7 +56,7 @@ export function LandingDeals({ limit = 8 }: { limit?: number }) {
   if (!deals.length) {
     return (
       <p className="rounded-lg border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
-        Aún no hay diferencias destacadas en este snapshot.
+        Aún no hay diferencias destacadas.
       </p>
     );
   }

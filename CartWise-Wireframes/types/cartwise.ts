@@ -231,3 +231,103 @@ export type ConfirmPurchaseData = {
   items: ConfirmedPurchaseItem[];
   addToPantry: boolean;
 };
+
+export type CheckoutLocation = {
+  latitude: number;
+  longitude: number;
+  country: string;
+  city: string;
+  address: string;
+  comunaSector: string;
+  reference?: string;
+  source: "geolocation" | "manual";
+  updatedAt: string;
+};
+
+export type BuyerIdentity = {
+  firstNames: string;
+  lastNames: string;
+  rut: string;
+  phone: string;
+  email: string;
+  address: string;
+  comunaSector: string;
+  dwellingType: "house" | "apartment";
+  apartmentNumber?: string;
+  reference?: string;
+};
+
+export type DeliveryQuote = {
+  storeId: number;
+  storeLabel: string;
+  branchName: string;
+  branchAddress: string;
+  branchLatitude: number;
+  branchLongitude: number;
+  distanceKm: number;
+  price: number;
+  hasProducts: boolean;
+};
+
+export type GeneratedPurchaseStatus = "generated" | "preparing" | "ready_external";
+
+export type GeneratedPaymentMethod =
+  | "debit"
+  | "credit"
+  | "transfer"
+  | "visa"
+  | "mastercard"
+  | "google_pay"
+  | "apple_pay"
+  | "demo_card";
+
+export type GeneratedPurchaseProduct = {
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  ean?: string | null;
+  category?: string | null;
+};
+
+export type GeneratedPurchaseStore = {
+  storeId: number;
+  storeLabel: string;
+  branchName: string;
+  branchAddress: string;
+  branchLatitude: number;
+  branchLongitude: number;
+  distanceKm: number;
+  products: GeneratedPurchaseProduct[];
+  subtotal: number;
+  deliveryPrice: number;
+  total: number;
+};
+
+export type GeneratedReceipt = {
+  id: string;
+  receiptNumber: string;
+  issuedAt: string;
+  storeLabel: string;
+  branchName: string;
+  paymentMethod: GeneratedPaymentMethod;
+  products: GeneratedPurchaseProduct[];
+  subtotal: number;
+  deliveryPrice: number;
+  total: number;
+};
+
+export type GeneratedPurchase = {
+  id: string;
+  createdAt: string;
+  snapshotDate?: string;
+  status: GeneratedPurchaseStatus;
+  buyer: BuyerIdentity;
+  location: CheckoutLocation;
+  paymentMethod: GeneratedPaymentMethod;
+  stores: GeneratedPurchaseStore[];
+  subtotalProducts: number;
+  deliveryTotal: number;
+  total: number;
+  receipts: GeneratedReceipt[];
+};

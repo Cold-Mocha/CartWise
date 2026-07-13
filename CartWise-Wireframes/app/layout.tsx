@@ -14,7 +14,7 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: "Cartwise — Compara supermercados y compra más inteligente",
   description:
-    "Arma tu compra, compara precios entre supermercados chilenos y descubre dónde conviene comprar. Precios referenciales según el último snapshot disponible.",
+    "Arma tu compra, compara precios entre supermercados chilenos y descubre dónde conviene comprar.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

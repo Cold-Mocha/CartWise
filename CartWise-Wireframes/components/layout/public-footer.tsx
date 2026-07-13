@@ -98,7 +98,7 @@ export function PublicFooter() {
       <div className="border-t border-white/10">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-white/60 sm:px-6">
           <p>© 2026 Cartwise · Compara y ahorra</p>
-          <p>Precios referenciales según el último snapshot disponible.</p>
+          <p>Precios actualizados según el último registro disponible.</p>
         </div>
       </div>
     </footer>

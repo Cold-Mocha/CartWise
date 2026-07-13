@@ -8,8 +8,7 @@ export function SiteFooter() {
       <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-8 sm:px-6">
         <Logo size={28} />
         <p className="max-w-md text-sm text-muted-foreground">
-          Compara supermercados chilenos y arma tu compra donde más conviene. Proyecto MVP con fines
-          demostrativos.
+          Compara supermercados chilenos y arma tu compra donde más conviene.
         </p>
       </div>
     </footer>

@@ -1,4 +1,4 @@
-import type { PlanStatus } from "@/types/cartwise";
+import type { GeneratedPurchaseStatus, PlanStatus } from "@/types/cartwise";
 
 // Demo MVP: no hay autenticación real. El login valida credenciales fijas y
 // marca una bandera en localStorage. La UI lo presenta como un login normal,
@@ -21,6 +21,7 @@ export const STORAGE_KEYS = {
   // /comparar y /plan-recomendado sobrevivan recargas de página.
   comparison: "cartwise_web_comparison",
   selection: "cartwise_web_selection",
+  generatedPurchases: "cartwise_web_generated_purchases",
 } as const;
 
 // Presupuesto mensual demo del MVP (CLP). Editable en estado local; sirve de
@@ -36,6 +37,12 @@ export const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
   pending: "Pendiente",
   purchased: "Comprado",
   discarded: "Descartado",
+};
+
+export const GENERATED_PURCHASE_STATUS_LABELS: Record<GeneratedPurchaseStatus, string> = {
+  generated: "Generada",
+  preparing: "En preparación",
+  ready_external: "Lista para seguimiento externo",
 };
 
 // Supermercados realmente integrados al mart, usados en el filtro de catálogo.

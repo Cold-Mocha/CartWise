@@ -217,7 +217,7 @@ function PantryCard({
               </Button>
             </>
           ) : (
-            <p className="text-xs text-muted-foreground">Sin precio disponible en el último snapshot.</p>
+            <p className="text-xs text-muted-foreground">Sin precio disponible en el registro más reciente.</p>
           )}
         </div>
       </CardContent>

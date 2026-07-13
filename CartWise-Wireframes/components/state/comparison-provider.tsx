@@ -22,9 +22,13 @@ type ComparisonState = {
   apiError: string | null;
   selection: PlanSelection;
   setSelection: React.Dispatch<React.SetStateAction<PlanSelection>>;
-  // Devuelve true si la comparación se generó (y se navegó a /comparar).
-  compareItems: (items: BasketItem[]) => Promise<boolean>;
+  // Devuelve true si la comparación se generó y se navegó al destino pedido.
+  compareItems: (items: BasketItem[], options?: CompareItemsOptions) => Promise<boolean>;
   clearComparison: () => void;
+};
+
+type CompareItemsOptions = {
+  destination?: string;
 };
 
 const ComparisonContext = React.createContext<ComparisonState | null>(null);
@@ -42,7 +46,7 @@ export function ComparisonProvider({ children }: { children: React.ReactNode }) 
 
   const hydrated = comparisonHydrated && selectionHydrated;
 
-  const compareItems = async (items: BasketItem[]) => {
+  const compareItems = async (items: BasketItem[], options: CompareItemsOptions = {}) => {
     if (!items.length || comparing) return false;
     setApiError(null);
     setComparing(true);
@@ -51,7 +55,7 @@ export function ComparisonProvider({ children }: { children: React.ReactNode }) 
       setComparison(data);
       // Cada comparación nueva parte con la selección automática (más barata).
       setSelection({});
-      router.push("/comparar");
+      router.push(options.destination ?? "/comparar");
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo comparar la compra.";

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { ArrowRight, ClipboardList, CreditCard, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,17 +30,23 @@ export function CartSheet() {
     usePendingPurchase();
   const { compareItems, comparing } = useComparison();
   const [open, setOpen] = React.useState(false);
+  const [action, setAction] = React.useState<"purchase" | "plan" | null>(null);
 
   const estimatedMin = basket.reduce(
     (sum, item) => sum + (item.precio_min != null ? item.precio_min * item.quantity : 0),
     0,
   );
 
-  const handleCompare = async () => {
-    // Navega a /comparar si la comparación funciona; el carrito se reinicia
+  const handleGenerate = async (kind: "purchase" | "plan") => {
+    setAction(kind);
+    // Navega al destino si la comparación funciona; el carrito se reinicia
     // porque sus productos ya viven en la comparación.
-    if (await compareItems(basket)) setBasket([]);
-    setOpen(false);
+    const destination = kind === "purchase" ? "/generar-compra" : "/comparar";
+    if (await compareItems(basket, { destination })) {
+      setBasket([]);
+      setOpen(false);
+    }
+    setAction(null);
   };
 
   return (
@@ -149,12 +155,33 @@ export function CartSheet() {
                   {money(estimatedMin)}
                 </span>
               </div>
-              <Button className="w-full" size="lg" onClick={handleCompare} disabled={comparing}>
-                {comparing ? (
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={() => handleGenerate("purchase")}
+                disabled={comparing}
+              >
+                {comparing && action === "purchase" ? (
+                  "Generando…"
+                ) : (
+                  <>
+                    Generar compra <CreditCard />
+                  </>
+                )}
+              </Button>
+              <Button
+                className="w-full"
+                size="lg"
+                variant="outline"
+                onClick={() => handleGenerate("plan")}
+                disabled={comparing}
+              >
+                {comparing && action === "plan" ? (
                   "Comparando…"
                 ) : (
                   <>
-                    Comparar <ArrowRight />
+                    Generar plan <ClipboardList />
+                    <ArrowRight />
                   </>
                 )}
               </Button>

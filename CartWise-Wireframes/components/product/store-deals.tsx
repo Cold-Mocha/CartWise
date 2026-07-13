@@ -82,7 +82,7 @@ export function StoreDealsSection({
   if (!sections.length) {
     return (
       <p className="rounded-xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
-        Sin ofertas temporales en este snapshot.
+        Sin ofertas temporales por ahora.
       </p>
     );
   }

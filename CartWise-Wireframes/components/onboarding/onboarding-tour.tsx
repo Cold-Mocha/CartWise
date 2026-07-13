@@ -24,7 +24,7 @@ const STEPS = [
   {
     icon: Home,
     title: "Bienvenido a Cartwise",
-    text: "Comparamos los supermercados chilenos cubiertos para que compres donde más conviene. Los precios son referenciales según el último snapshot, no en tiempo real.",
+    text: "Comparamos supermercados chilenos para que compres donde más conviene, con precios actualizados según el último registro disponible.",
   },
   {
     icon: Search,
